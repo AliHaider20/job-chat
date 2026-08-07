@@ -61,9 +61,113 @@ If the documents genuinely do not cover something, say so directly and stop. "Th
 """
 
 
+def render_system_prompt(context_text, job_description) -> str:
+    """The system prompt as plain text, for paths that bypass the chat template."""
+    return QA_SYSTEM_PROMPT.format(
+        candidate_name=get_settings().candidate_name,
+        context_text=context_text,
+        job_description=job_description or NO_JD_PLACEHOLDER,
+    )
+
+
 def build_qa_prompt() -> ChatPromptTemplate:
     return ChatPromptTemplate.from_messages([
         ("system", QA_SYSTEM_PROMPT),
         MessagesPlaceholder("history"),
         ("user", "{user_query}"),
     ]).partial(candidate_name=get_settings().candidate_name)
+
+
+# ---------------------------------------------------------------------------
+# Preset actions.
+#
+# These are sent as the user turn, so they inherit the system prompt above —
+# the grounding rules (STATED / INFERRED / UNSUPPORTED) apply to all of them
+# and are deliberately not repeated here. Each one specifies its output format
+# explicitly, because a named heading the model must fill is followed far more
+# reliably than a described shape it has to infer.
+# ---------------------------------------------------------------------------
+
+DETAILED_REVIEW = """Produce a detailed fit review of the candidate against the loaded job description.
+
+If no job description is loaded, say exactly that and stop.
+
+Use these headings, in this order, with no others:
+
+## Verdict
+One line: Strong fit / Moderate fit / Weak fit, then a single sentence of justification.
+
+## Requirement-by-requirement
+A markdown table with columns: Requirement | Status | Evidence
+- One row per meaningful requirement in the job description. Skip filler requirements ("team player", "fast-paced environment").
+- Status is exactly one of: MET, PARTIAL, MISSING.
+- Evidence names the specific project, role, or skill from the candidate documents. For MISSING, write "Not in documents".
+
+## Strengths to lead with
+Exactly three bullets, strongest first. Each names concrete evidence and why it matters for this specific role.
+
+## Gaps that matter
+Ranked, most damaging first. For each: the gap, then DISQUALIFYING or LEARNABLE, then one sentence of reasoning. Omit trivial gaps.
+
+## Likely interview probes
+Three to five questions an interviewer would most likely press on, drawn from the gaps above.
+
+## Recommendation
+One of: Apply / Apply with preparation / Do not apply. Then one or two sentences on why, and what to do first if relevant.
+
+Do not invent requirements absent from the job description, and do not credit experience absent from the candidate documents."""
+
+
+ATS_SCORE = """Produce an ATS keyword analysis of the candidate documents against the loaded job description.
+
+If no job description is loaded, say exactly that and stop.
+
+Extract keywords ONLY from the text inside the <job_description> tags. The categories below define what counts as a keyword — they are descriptions of term TYPES, not a checklist. Never output a term that does not literally appear in the job description.
+
+Counts as a keyword: programming languages; frameworks and libraries; cloud platforms; infrastructure, container, and orchestration tools; databases and data stores; ML/AI techniques and methods; MLOps, CI/CD, and experiment-tracking tooling; named certifications; specific technical domains.
+
+Does not count: soft skills and personality traits; job titles; company names; benefits; generic verbs; years-of-experience phrases; vague qualities like "fast-paced" or "team player".
+
+Be exhaustive. Include keywords from every part of the job description, including "nice to have" sections.
+
+Matching rules:
+- MATCHED means the keyword appears in the candidate documents by name or as an unambiguous variant (K8s = Kubernetes, JS = JavaScript, GCP = Google Cloud Platform).
+- Adjacent but different does NOT match. Docker is not Kubernetes; TensorFlow is not PyTorch. Those belong in Missing.
+- Judge only on what the documents say. Give no credit for anything assumed.
+
+Every keyword you extract must go into exactly one of the two lists — matched or missing. Do not omit any, and do not place the same keyword in both. Do not compute a score or any totals; that is calculated separately from your lists.
+
+For priority fixes, choose up to three missing keywords that would most improve the candidate's standing, most valuable first. Mark one as honestly addable only when the evidence already exists in the documents and merely needs surfacing. Never suggest claiming a keyword the candidate cannot truthfully support."""
+
+
+COVER_LETTER = """Write a cover letter for the candidate applying to the loaded job description.
+
+If no job description is loaded, say exactly that and stop.
+
+Length: 250-400 words in the letter body. This is a hard constraint.
+
+Structure:
+- Opening, 2-3 sentences: name the specific role and the single strongest reason this candidate fits it. Lead with evidence, not enthusiasm.
+- Body paragraph 1: the most relevant experience, named specifically, tied to a requirement in the job description.
+- Body paragraph 2: a second, genuinely distinct strength — a different project or skill, not a restatement of the first.
+- Closing, 2-3 sentences: what the candidate wants to contribute, then a plain sign-off.
+
+Voice and content:
+- First person, the candidate's own voice, natural professional register.
+- Every claim must trace to the candidate documents. No invented employers, dates, metrics, or outcomes.
+- If a sentence needs a number the documents lack, insert a bracketed placeholder such as [ADD METRIC: latency improvement] instead of inventing one.
+- Address it to "Dear Hiring Manager" unless the job description names someone.
+- Do not open with "I am writing to express my interest" or any equivalent cliché.
+- No filler adjectives: passionate, dynamic, results-driven, proven track record.
+- Do not raise requirements the candidate does not meet.
+
+After the letter, output:
+Word count: <number>
+and, if you used any placeholders, a short list of what the candidate needs to fill in."""
+
+
+ACTIONS = {
+    "review": ("Detailed review", DETAILED_REVIEW),
+    "ats": ("ATS score & keywords", ATS_SCORE),
+    "cover_letter": ("Cover letter", COVER_LETTER),
+}

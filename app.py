@@ -1,6 +1,7 @@
 import logging
 import sys
 import uuid
+from functools import partial
 
 import gradio as gr
 from langchain_core.messages import AIMessage, HumanMessage
@@ -8,6 +9,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from config import ConfigError, get_settings
 from graph import build_graph
 from observability import build_run_config, flush
+from prompts import ACTIONS
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("job-chat")
@@ -17,6 +19,10 @@ try:
     GRAPH = build_graph()
 except (ConfigError, FileNotFoundError) as exc:
     sys.exit(f"Startup failed: {exc}")
+
+
+# Actions whose node returns one structured object rather than a token stream.
+STRUCTURED_ACTIONS = {"ats"}
 
 
 def new_thread_id():
@@ -35,28 +41,66 @@ def add_user_message(user_query, chat_history):
     return "", chat_history + [{"role": "user", "content": user_query}]
 
 
-def stream_response(chat_history, job_description, thread_id):
-    """Stream the assistant reply for the last user message."""
+def show_action_label(label, chat_history):
+    """Show the button's short label in the chat instead of its full instruction."""
+    return chat_history + [{"role": "user", "content": f"**{label}**"}]
+
+
+def run_action(key, chat_history, job_description, thread_id):
+    _, instruction = ACTIONS[key]
+    yield from stream_response(
+        chat_history, job_description, thread_id, model_query=instruction, action=key
+    )
+
+
+def stream_response(chat_history, job_description, thread_id, model_query=None, action=""):
+    """Stream the assistant reply for the last user message.
+
+    model_query lets a preset action send its full instruction to the model
+    while the chat shows only a short label. Structured actions cannot stream
+    token by token, so they show a placeholder and then replace it.
+    """
     if not chat_history or chat_history[-1]["role"] != "user":
         yield chat_history
         return
 
     job_description = (job_description or "").strip()
     state = {
-        "messages": [HumanMessage(content=chat_history[-1]["content"])],
+        "messages": [HumanMessage(content=model_query or chat_history[-1]["content"])],
         "job_description": job_description,
+        "action": action,
     }
     config = build_run_config(thread_id, job_description)
 
     chat_history = chat_history + [{"role": "assistant", "content": ""}]
     try:
+        if action in STRUCTURED_ACTIONS:
+            chat_history[-1]["content"] = "_Extracting and scoring keywords…_"
+            yield chat_history
+            result = GRAPH.invoke(state, config)
+            chat_history[-1]["content"] = result["messages"][-1].content
+            yield chat_history
+            return
+
         for chunk, _meta in GRAPH.stream(state, config, stream_mode="messages"):
             if isinstance(chunk, AIMessage) and chunk.content:
                 chat_history[-1]["content"] += chunk.content
                 yield chat_history
     except Exception as exc:
         logger.exception("Request failed")
-        chat_history[-1]["content"] = f"Request failed: {exc}"
+        detail = str(exc)
+        if "tokens per day" in detail or "TPD" in detail:
+            detail = (
+                "Groq daily token limit reached. The quota resets on a rolling "
+                "24-hour basis, or you can raise it on the Groq billing page."
+            )
+        elif "rate_limit" in detail or "413" in detail:
+            detail = (
+                "Groq per-minute token limit hit. The profile, job description, and "
+                "reserved response tokens exceed the allowance for one request. Shorten "
+                "the job description, lower LLM_MAX_TOKENS, or wait a minute and retry."
+            )
+        chat_history[-1]["content"] = f"**Request failed.** {detail}"
         yield chat_history
 
 
@@ -79,6 +123,12 @@ with gr.Blocks(title="job-chat", fill_height=True, analytics_enabled=False) as d
             clear_jd_btn = gr.Button("Clear job description")
 
         with gr.Column(scale=2):
+            with gr.Row():
+                action_buttons = {
+                    key: gr.Button(label, size="sm")
+                    for key, (label, _) in ACTIONS.items()
+                }
+
             chatbot = gr.Chatbot(height=520, show_label=False, resizable=True)
             query_box = gr.Textbox(
                 placeholder="Ask a question...",
@@ -103,6 +153,18 @@ with gr.Blocks(title="job-chat", fill_height=True, analytics_enabled=False) as d
         inputs=[chatbot, jd_box, thread_id],
         outputs=chatbot,
     )
+
+    for key, button in action_buttons.items():
+        button.click(
+            partial(show_action_label, ACTIONS[key][0]),
+            inputs=chatbot,
+            outputs=chatbot,
+            queue=False,
+        ).then(
+            partial(run_action, key),
+            inputs=[chatbot, jd_box, thread_id],
+            outputs=chatbot,
+        )
 
 
 if __name__ == "__main__":

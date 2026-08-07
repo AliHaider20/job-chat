@@ -13,7 +13,11 @@ PROJECT_ROOT = Path(__file__).parent
 
 DEFAULT_MODEL = "openai/gpt-oss-120b"
 DEFAULT_TEMPERATURE = 0.0
-DEFAULT_MAX_TOKENS = 2048
+# The preset actions (ATS keyword tables, detailed reviews) run long, so 2048
+# truncated them mid-answer. The ceiling is Groq's free-tier limit of 8000
+# tokens per minute, which counts input + max_tokens together: profile (~3.9k)
+# plus job description plus this value must stay under it.
+DEFAULT_MAX_TOKENS = 3000
 DEFAULT_DATA_DIR = "data"
 DEFAULT_LANGFUSE_HOST = "https://cloud.langfuse.com"
 DEFAULT_CHECKPOINT_DB = "checkpoints.sqlite"

@@ -9,21 +9,24 @@ rewrite.
 import sqlite3
 from typing import Annotated, TypedDict
 
-from langchain_core.messages import trim_messages
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, trim_messages
 from langchain_groq import ChatGroq
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import START, StateGraph
 from langgraph.graph.message import add_messages
 
+from ats import ATSAnalysis, format_ats_report
 from config import get_settings
 from dataloader import ProfileLoader
-from prompts import NO_JD_PLACEHOLDER, build_qa_prompt
+from prompts import NO_JD_PLACEHOLDER, build_qa_prompt, render_system_prompt
 
 
 class ChatState(TypedDict):
     # add_messages appends rather than overwrites, so each turn extends the thread.
     messages: Annotated[list, add_messages]
     job_description: str
+    # "ats" routes to structured keyword analysis; anything else answers as chat.
+    action: str
 
 
 def build_llm():
@@ -40,6 +43,7 @@ def build_graph():
     settings = get_settings()
     profile_data = ProfileLoader(settings.data_dir).load_and_format_markdown()
     chain = build_qa_prompt() | build_llm()
+    structured_llm = build_llm().with_structured_output(ATSAnalysis)
 
     # Two messages per turn (human + ai).
     max_history_messages = settings.max_history_turns * 2
@@ -64,9 +68,22 @@ def build_graph():
         })
         return {"messages": [response]}
 
+    def ats_analysis(state: ChatState):
+        """Classify keywords with structured output, then score them in Python."""
+        analysis = structured_llm.invoke([
+            SystemMessage(content=render_system_prompt(profile_data, state.get("job_description"))),
+            HumanMessage(content=state["messages"][-1].content),
+        ])
+        return {"messages": [AIMessage(content=format_ats_report(analysis))]}
+
     builder = StateGraph(ChatState)
     builder.add_node("answer", answer)
-    builder.add_edge(START, "answer")
+    builder.add_node("ats_analysis", ats_analysis)
+    builder.add_conditional_edges(
+        START,
+        lambda state: "ats_analysis" if state.get("action") == "ats" else "answer",
+        ["answer", "ats_analysis"],
+    )
 
     # check_same_thread=False: Gradio serves requests from a pool of threads.
     conn = sqlite3.connect(str(settings.checkpoint_db), check_same_thread=False)
