@@ -17,6 +17,9 @@ DEFAULT_MAX_TOKENS = 2048
 DEFAULT_DATA_DIR = "data"
 DEFAULT_LANGFUSE_HOST = "https://cloud.langfuse.com"
 DEFAULT_CHECKPOINT_DB = "checkpoints.sqlite"
+# Turns of conversation replayed to the model. Older turns stay in the
+# checkpoint (nothing is deleted) but are not resent.
+DEFAULT_MAX_HISTORY_TURNS = 10
 
 
 class ConfigError(RuntimeError):
@@ -31,6 +34,7 @@ class Settings:
     model: str
     temperature: float
     max_tokens: int
+    max_history_turns: int
     checkpoint_db: Path
     langfuse_public_key: str
     langfuse_secret_key: str
@@ -95,6 +99,7 @@ def get_settings() -> Settings:
         model=os.getenv("GROQ_MODEL", "").strip() or DEFAULT_MODEL,
         temperature=_get_float("LLM_TEMPERATURE", DEFAULT_TEMPERATURE),
         max_tokens=_get_int("LLM_MAX_TOKENS", DEFAULT_MAX_TOKENS),
+        max_history_turns=_get_int("MAX_HISTORY_TURNS", DEFAULT_MAX_HISTORY_TURNS),
         checkpoint_db=PROJECT_ROOT / (
             os.getenv("CHECKPOINT_DB", "").strip() or DEFAULT_CHECKPOINT_DB
         ),

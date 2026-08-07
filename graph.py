@@ -9,6 +9,7 @@ rewrite.
 import sqlite3
 from typing import Annotated, TypedDict
 
+from langchain_core.messages import trim_messages
 from langchain_groq import ChatGroq
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import START, StateGraph
@@ -40,8 +41,20 @@ def build_graph():
     profile_data = ProfileLoader(settings.data_dir).load_and_format_markdown()
     chain = build_qa_prompt() | build_llm()
 
+    # Two messages per turn (human + ai).
+    max_history_messages = settings.max_history_turns * 2
+
     def answer(state: ChatState):
-        history = state["messages"][:-1]
+        # Older turns remain in the checkpoint; they are simply not resent,
+        # which keeps per-turn cost flat instead of growing with the thread.
+        history = trim_messages(
+            state["messages"][:-1],
+            max_tokens=max_history_messages,
+            token_counter=len,
+            strategy="last",
+            start_on="human",
+            include_system=False,
+        )
         user_query = state["messages"][-1].content
         response = chain.invoke({
             "context_text": profile_data,
