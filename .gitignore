@@ -1,2 +1,9 @@
 data/
 .env
+.venv/
+__pycache__/
+*.pyc
+
+# LangGraph checkpoints
+checkpoints.sqlite
+checkpoints.sqlite-*

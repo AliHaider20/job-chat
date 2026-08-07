@@ -1,0 +1,12 @@
+gradio==6.22.0
+langchain==1.3.14
+langchain-core==1.5.1
+langchain-groq==1.1.3
+langgraph==1.2.10
+langgraph-checkpoint-sqlite==3.1.1
+langfuse==4.14.3
+python-dotenv==1.2.2
+
+# Makes Python trust the OS certificate store. Required on networks that do
+# TLS inspection (corporate proxy / antivirus); harmless elsewhere.
+pip-system-certs==5.3

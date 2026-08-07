@@ -1,0 +1,4 @@
+# Only needed to run pdf_2_markdown_converter.py (PDF -> Markdown).
+# Pulls in torch and other heavy deps; the chat app does not need these.
+docling==2.118.0
+tqdm==4.69.0
