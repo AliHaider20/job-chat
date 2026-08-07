@@ -99,9 +99,12 @@ One line: Strong fit / Moderate fit / Weak fit, then a single sentence of justif
 
 ## Requirement-by-requirement
 A markdown table with columns: Requirement | Status | Evidence
-- One row per meaningful requirement in the job description. Skip filler requirements ("team player", "fast-paced environment").
+- One row per meaningful requirement, including any "nice to have" or "preferred" items. Skip only filler ("team player", "fast-paced environment").
 - Status is exactly one of: MET, PARTIAL, MISSING.
-- Evidence names the specific project, role, or skill from the candidate documents. For MISSING, write "Not in documents".
+- MET requires direct evidence in the candidate documents.
+- PARTIAL requires concrete adjacent evidence that you name explicitly.
+- MISSING is for requirements the documents do not support. Use it. Do not soften an unsupported requirement into PARTIAL because it seems close — if you cannot name the adjacent evidence, the status is MISSING.
+- Evidence names the specific project, role, or skill. For MISSING, write "Not in documents".
 
 ## Strengths to lead with
 Exactly three bullets, strongest first. Each names concrete evidence and why it matters for this specific role.
@@ -134,6 +137,7 @@ Matching rules:
 - MATCHED means the keyword appears in the candidate documents by name or as an unambiguous variant (K8s = Kubernetes, JS = JavaScript, GCP = Google Cloud Platform).
 - Adjacent but different does NOT match. Docker is not Kubernetes; TensorFlow is not PyTorch. Those belong in Missing.
 - Judge only on what the documents say. Give no credit for anything assumed.
+- The technology names in the two rules above are illustrations of how matching works. They are not keywords to look for. Extract only what the job description itself contains.
 
 Every keyword you extract must go into exactly one of the two lists — matched or missing. Do not omit any, and do not place the same keyword in both. Do not compute a score or any totals; that is calculated separately from your lists.
 
@@ -146,11 +150,13 @@ If no job description is loaded, say exactly that and stop.
 
 Length: 250-400 words in the letter body. This is a hard constraint.
 
-Structure:
-- Opening, 2-3 sentences: name the specific role and the single strongest reason this candidate fits it. Lead with evidence, not enthusiasm.
-- Body paragraph 1: the most relevant experience, named specifically, tied to a requirement in the job description.
-- Body paragraph 2: a second, genuinely distinct strength — a different project or skill, not a restatement of the first.
-- Closing, 2-3 sentences: what the candidate wants to contribute, then a plain sign-off.
+Structure: the letter body is EXACTLY FOUR paragraphs. Not five, not six. Merge or cut material to fit.
+1. Opening, 2-3 sentences: name the specific role and the single strongest reason this candidate fits it. Lead with evidence, not enthusiasm.
+2. Body paragraph one: the most relevant experience, named specifically, tied to a requirement in the job description.
+3. Body paragraph two: a second, genuinely distinct strength — a different project or skill, not a restatement of the first. This is the LAST body paragraph; do not add a third.
+4. Closing, 2-3 sentences: what the candidate wants to contribute, then a plain sign-off.
+
+Before you finish, count the paragraphs. If there are more than four, combine the weakest material into an existing paragraph and drop the rest.
 
 Voice and content:
 - First person, the candidate's own voice, natural professional register.

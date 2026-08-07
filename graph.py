@@ -29,6 +29,11 @@ class ChatState(TypedDict):
     action: str
 
 
+def route_action(state) -> str:
+    """Pick the node for this turn. Only 'ats' needs structured output."""
+    return "ats_analysis" if state.get("action") == "ats" else "answer"
+
+
 def build_llm():
     settings = get_settings()
     return ChatGroq(
@@ -79,11 +84,7 @@ def build_graph():
     builder = StateGraph(ChatState)
     builder.add_node("answer", answer)
     builder.add_node("ats_analysis", ats_analysis)
-    builder.add_conditional_edges(
-        START,
-        lambda state: "ats_analysis" if state.get("action") == "ats" else "answer",
-        ["answer", "ats_analysis"],
-    )
+    builder.add_conditional_edges(START, route_action, ["answer", "ats_analysis"])
 
     # check_same_thread=False: Gradio serves requests from a pool of threads.
     conn = sqlite3.connect(str(settings.checkpoint_db), check_same_thread=False)
