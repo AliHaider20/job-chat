@@ -13,6 +13,9 @@ PROJECT_ROOT = Path(__file__).parent
 
 DEFAULT_MODEL = "openai/gpt-oss-120b"
 DEFAULT_TEMPERATURE = 0.0
+# Drafting a cover letter is writing, not analysis: a little sampling gives
+# natural prose. Kept low so it does not start inventing detail.
+DEFAULT_DRAFTING_TEMPERATURE = 0.4
 # The preset actions (ATS keyword tables, detailed reviews) run long, so 2048
 # truncated them mid-answer. The ceiling is Groq's free-tier limit of 8000
 # tokens per minute, which counts input + max_tokens together: profile (~3.9k)
@@ -24,6 +27,9 @@ DEFAULT_CHECKPOINT_DB = "checkpoints.sqlite"
 # Turns of conversation replayed to the model. Older turns stay in the
 # checkpoint (nothing is deleted) but are not resent.
 DEFAULT_MAX_HISTORY_TURNS = 10
+# Routing and retrieval. ONNX runtime, so no torch dependency.
+DEFAULT_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+DEFAULT_RETRIEVAL_TOP_K = 5
 
 
 class ConfigError(RuntimeError):
@@ -37,8 +43,11 @@ class Settings:
     data_dir: Path
     model: str
     temperature: float
+    drafting_temperature: float
     max_tokens: int
     max_history_turns: int
+    embedding_model: str
+    retrieval_top_k: int
     checkpoint_db: Path
     langfuse_public_key: str
     langfuse_secret_key: str
@@ -102,8 +111,11 @@ def get_settings() -> Settings:
         data_dir=_resolve_data_dir(),
         model=os.getenv("GROQ_MODEL", "").strip() or DEFAULT_MODEL,
         temperature=_get_float("LLM_TEMPERATURE", DEFAULT_TEMPERATURE),
+        drafting_temperature=_get_float("LLM_DRAFTING_TEMPERATURE", DEFAULT_DRAFTING_TEMPERATURE),
         max_tokens=_get_int("LLM_MAX_TOKENS", DEFAULT_MAX_TOKENS),
         max_history_turns=_get_int("MAX_HISTORY_TURNS", DEFAULT_MAX_HISTORY_TURNS),
+        embedding_model=os.getenv("EMBEDDING_MODEL", "").strip() or DEFAULT_EMBEDDING_MODEL,
+        retrieval_top_k=_get_int("RETRIEVAL_TOP_K", DEFAULT_RETRIEVAL_TOP_K),
         checkpoint_db=PROJECT_ROOT / (
             os.getenv("CHECKPOINT_DB", "").strip() or DEFAULT_CHECKPOINT_DB
         ),

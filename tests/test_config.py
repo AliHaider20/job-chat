@@ -73,9 +73,16 @@ def test_overrides_are_read_from_the_environment(base_env, monkeypatch):
     assert settings.max_history_turns == 3
 
 
-def test_relative_data_dir_resolves_against_the_project_root(base_env, monkeypatch):
-    monkeypatch.setenv("DATA_DIR", "data")
-    assert get_settings().data_dir == config.PROJECT_ROOT / "data"
+def test_relative_data_dir_resolves_against_the_project_root(base_env, monkeypatch, tmp_path):
+    """A relative DATA_DIR must not depend on the process working directory."""
+    project_root = tmp_path / "project"
+    (project_root / "docs").mkdir(parents=True)
+    (project_root / "docs" / "resume.md").write_text("# Resume", encoding="utf-8")
+
+    monkeypatch.setattr(config, "PROJECT_ROOT", project_root)
+    monkeypatch.setenv("DATA_DIR", "docs")
+
+    assert get_settings().data_dir == project_root / "docs"
 
 
 class TestLangfuseHost:

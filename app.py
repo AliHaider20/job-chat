@@ -78,7 +78,7 @@ def stream_response(chat_history, job_description, thread_id, model_query=None, 
             chat_history[-1]["content"] = "_Extracting and scoring keywords…_"
             yield chat_history
             result = GRAPH.invoke(state, config)
-            chat_history[-1]["content"] = result["messages"][-1].content
+            chat_history[-1]["content"] = str(result["messages"][-1].text)
             yield chat_history
             return
 

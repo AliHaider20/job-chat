@@ -8,10 +8,27 @@ grounded only in your own career documents.
 
 **1. Create the environment**
 
+Python 3.13 is what CI runs on; 3.11+ works.
+
 ```bash
 python -m venv .venv
-.venv\Scripts\activate          # Windows
-source .venv/bin/activate       # macOS / Linux
+```
+
+Activate it — Windows:
+
+```powershell
+.venv\Scripts\activate
+```
+
+macOS / Linux:
+
+```bash
+source .venv/bin/activate
+```
+
+Then:
+
+```bash
 pip install -r requirements.txt
 ```
 
@@ -24,7 +41,7 @@ CANDIDATE_NAME=Your Name        # used in the system prompt
 # Optional — Langfuse tracing. Tracing turns on only when both keys are present.
 LANGFUSE_PUBLIC_KEY=pk-lf-...
 LANGFUSE_SECRET_KEY=sk-lf-...
-LANGFUSE_BASE_URL=https://us.cloud.langfuse.com
+LANGFUSE_HOST=https://us.cloud.langfuse.com
 ```
 
 | Variable | Default | Purpose |
@@ -35,10 +52,13 @@ LANGFUSE_BASE_URL=https://us.cloud.langfuse.com
 | `GROQ_MODEL` | `openai/gpt-oss-120b` | Model id. |
 | `LLM_TEMPERATURE` | `0.0` | Sampling temperature. |
 | `LLM_MAX_TOKENS` | `3000` | Response cap. See the token budget note below. |
+| `LLM_DRAFTING_TEMPERATURE` | `0.4` | Temperature for cover-letter drafting only. |
 | `MAX_HISTORY_TURNS` | `10` | Turns replayed to the model per request. |
+| `EMBEDDING_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Routing and retrieval embeddings, run through fastembed (ONNX, no torch). Downloaded on first run. |
+| `RETRIEVAL_TOP_K` | `5` | Excerpts retrieved for a narrow question. |
 | `CHECKPOINT_DB` | `checkpoints.sqlite` | Where conversation threads persist. |
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | — | Enable tracing when both are set. |
-| `LANGFUSE_HOST` or `LANGFUSE_BASE_URL` | `https://cloud.langfuse.com` | Langfuse region. Use the US host if your keys are US. |
+| `LANGFUSE_HOST` (alias: `LANGFUSE_BASE_URL`) | `https://cloud.langfuse.com` | Langfuse region. Use `https://us.cloud.langfuse.com` if your keys are US. |
 
 **3. Add your documents.** Put your resume, project write-ups, and any other career documents
 in `data/`. PDFs must be converted to Markdown first — the app reads only `.md`:
@@ -47,6 +67,11 @@ in `data/`. PDFs must be converted to Markdown first — the app reads only `.md
 pip install -r requirements-ingest.txt   # docling, heavy; needed only for this step
 python pdf_2_markdown_converter.py
 ```
+
+The converter reads and writes `data/` directly; it does not honour `DATA_DIR`. If you point
+`DATA_DIR` elsewhere, convert in `data/` first and move the `.md` files across.
+
+Startup fails if the directory is missing or holds no `.md` file, so do this before step 4.
 
 **4. Run**
 
@@ -62,7 +87,10 @@ Paste a job description into the left panel, then chat or use the preset buttons
 job-chat/
 ├── app.py                       # Gradio UI and event wiring — the entry point
 ├── graph.py                     # LangGraph state graph, routing, LLM construction
-├── prompts.py                   # System prompt and the three preset action instructions
+├── prompts.py                   # System prompts and the three preset action instructions
+├── router.py                    # Semantic router: trivial / specific / full
+├── retrieval.py                 # Chunking and similarity search over the profile
+├── embeddings.py                # fastembed wrapper
 ├── ats.py                       # ATS schema and score calculation
 ├── dataloader.py                # Loads and concatenates the Markdown profile documents
 ├── config.py                    # Environment settings with validation
@@ -70,22 +98,30 @@ job-chat/
 ├── pdf_2_markdown_converter.py  # One-off: PDF -> Markdown
 ├── data/                        # Your documents (gitignored)
 ├── tests/                       # Unit tests; no API calls
+├── .github/workflows/tests.yml  # CI: runs the suite on push and pull request
 ├── requirements.txt             # Runtime
 ├── requirements-ingest.txt      # PDF conversion only
-└── requirements-dev.txt         # Tests
+└── requirements-dev.txt         # Tests (install on top of requirements.txt)
 ```
 
 ## Graph structure
 
-One state graph with two nodes. Routing depends on `action` in the state: the ATS button needs
-structured output, everything else streams as chat.
+A preset button routes on its `action`. Free-form chat is classified by a semantic router, which
+decides how much of your profile the question actually needs.
 
 ```mermaid
-flowchart LR
-    START([START]) -->|action == "ats"| ATS["ats_analysis<br/>structured output"]
-    START -->|otherwise| ANSWER["answer<br/>streaming chat"]
+flowchart TD
+    START([START]) --> DECIDE{action set?}
+    DECIDE -->|ats| ATS["ats_analysis<br/>full profile, structured output"]
+    DECIDE -->|review, cover_letter| ANSWER["answer<br/>full profile + job description"]
+    DECIDE -->|no action| ROUTER{{semantic router}}
+    ROUTER -->|trivial| TRIVIAL["trivial_answer<br/>no profile"]
+    ROUTER -->|specific| RAG["rag_answer<br/>retrieved excerpts"]
+    ROUTER -->|full / uncertain| ANSWER
     ATS --> FINISH([END])
     ANSWER --> FINISH
+    TRIVIAL --> FINISH
+    RAG --> FINISH
 ```
 
 **State**
@@ -96,13 +132,37 @@ flowchart LR
 | `job_description` | The pasted target role. |
 | `action` | `ats`, `review`, `cover_letter`, or empty for free chat. |
 
-**`answer`** renders the system prompt with your documents and the job description, replays the
-last `MAX_HISTORY_TURNS` turns, and streams the reply. Older turns stay in the checkpoint but are
-not resent, so cost per turn stays flat however long the conversation runs.
+**Nodes**
 
-**`ats_analysis`** asks the model only to classify each job-description keyword as matched or
-missing. The percentage is computed in Python from the list lengths, so the score cannot
-contradict the lists it is derived from.
+| Node | Context sent | Used for |
+|---|---|---|
+| `answer` | Full profile + job description | Preset review and cover letter, and any broad question |
+| `rag_answer` | Top `RETRIEVAL_TOP_K` excerpts | Narrow factual questions |
+| `trivial_answer` | None | Greetings and pleasantries |
+| `ats_analysis` | Full profile + job description | ATS button only |
+
+All three chat nodes replay only the last `MAX_HISTORY_TURNS` turns. Older turns stay in the
+checkpoint but are not resent, so cost per turn stays flat however long the conversation runs.
+
+`ats_analysis` asks the model only to classify each job-description keyword as matched or missing.
+The percentage is computed in Python from the list lengths, so the score cannot contradict the
+lists it is derived from.
+
+**Routing rules.** Every preset action bypasses the router and receives the full profile: a
+retrieval miss inside an ATS score or a fit review would silently drop real evidence. For free
+chat, the router compares the question against the centroid of reference examples per route
+(`router.py`) and falls back to the full profile whenever the best match is weak or close to the
+runner-up. The asymmetry is deliberate — routing a greeting to the full profile only wastes
+tokens, while routing a real question away from it produces a confident answer with no evidence
+behind it.
+
+**Measured cost per request** (this profile, one narrow question):
+
+| Route | Approximate prompt tokens | Saving |
+|---|---|---|
+| `answer` | 4,110 | — |
+| `rag_answer` | 1,028 | 75% |
+| `trivial_answer` | 195 | 95% |
 
 **Persistence.** A SQLite checkpointer keeps each thread on disk, so conversations survive a
 restart. "Reset conversation" starts a new thread; the previous one is retained.
@@ -110,16 +170,22 @@ restart. "Reset conversation" starts a new thread; the previous one is retained.
 ## Tests
 
 ```bash
-pip install -r requirements-dev.txt
+pip install -r requirements-dev.txt      # on top of requirements.txt
 python -m pytest tests/ -q
 ```
 
 Unit tests only — no API calls, no keys needed. They cover the ATS score arithmetic, config
-validation, document loading, routing, history trimming, and prompt templating.
+validation, document loading, chunking and retrieval, semantic routing, node selection, history
+trimming, temperature selection, and prompt templating. `tests/test_isolation.py` asserts the
+suite never touches your real credentials or your `data/` documents. CI runs the same command on
+every push to `main` and every pull request.
 
 ## Token budget
 
-Groq's free tier allows 8,000 tokens per minute and 200,000 per day. Each request sends your full
-profile (~3,900 tokens) plus the job description plus the reserved response budget, so a single
-request costs roughly 7,000–8,000 tokens. That is about 25–40 requests per day. `LLM_MAX_TOKENS`
-is capped at 3,000 to keep requests under the per-minute ceiling; raising it triggers HTTP 413.
+Groq's free tier allows 8,000 tokens per minute and 200,000 per day for `openai/gpt-oss-120b`
+(check your own limits — they vary by model and account). A full-profile request sends your
+profile (~3,900 tokens) plus the job description plus the reserved response budget, so it costs
+roughly 7,000–8,000 tokens: about 25–28 such requests per day. Routed chat is much cheaper, so
+the real daily count is higher whenever questions take the `rag_answer` or `trivial_answer`
+route. `LLM_MAX_TOKENS` defaults to 3,000 to keep a full-profile request under the per-minute
+ceiling; raising it can push a request past the limit, which Groq rejects with HTTP 413.
