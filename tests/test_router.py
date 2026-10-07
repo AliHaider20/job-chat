@@ -72,6 +72,39 @@ def test_shipped_thresholds_leave_room_for_a_confident_match():
     assert 0 < MIN_MARGIN < 1
 
 
+class TestRouteLogging:
+    """Answers do not reveal which tier produced them, so the log is the only
+    way to tell a full-profile answer from one built on five excerpts."""
+
+    def test_the_chosen_route_is_logged(self, router, caplog):
+        with caplog.at_level("INFO", logger="router"):
+            router.route("NARROW")
+        assert "Route specific" in caplog.text
+
+    def test_the_log_records_every_score(self, router, caplog):
+        with caplog.at_level("INFO", logger="router"):
+            router.route("NARROW")
+        for route in (TRIVIAL, SPECIFIC, FULL):
+            assert f"{route}=" in caplog.text
+
+    def test_a_fallback_says_which_rule_rejected_the_winner(self, router, caplog):
+        """'Route full' alone cannot be told apart from a genuine full match."""
+        with caplog.at_level("INFO", logger="router"):
+            router.route("GREET NARROW")
+        assert "min_margin" in caplog.text
+
+    def test_a_low_score_fallback_names_the_score_rule(self, caplog):
+        strict = SemanticRouter(fake_embed, references=REFERENCES, min_score=1.1)
+        with caplog.at_level("INFO", logger="router"):
+            strict.route("GREET")
+        assert "min_score" in caplog.text
+
+    def test_an_unroutable_query_still_logs(self, router, caplog):
+        with caplog.at_level("INFO", logger="router"):
+            router.route(None)
+        assert "Route full" in caplog.text
+
+
 def test_scores_cover_every_route(router):
     assert set(router.scores("GREET")) == {TRIVIAL, SPECIFIC, FULL}
 

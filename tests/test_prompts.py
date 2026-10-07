@@ -31,6 +31,29 @@ def test_ats_action_has_no_inclusion_list_of_technologies():
     assert "ONLY from the text inside the <job_description>" in instruction
 
 
+class TestBrevityDefaults:
+    """Chat answers are capped, but the preset actions run long by design and
+    inherit the same system prompt, so the cap has to yield to them."""
+
+    def test_the_chat_prompts_cap_their_length(self):
+        from prompts import QA_SYSTEM_PROMPT, RAG_SYSTEM_PROMPT
+
+        for prompt in (QA_SYSTEM_PROMPT, RAG_SYSTEM_PROMPT):
+            assert "Ceiling of about" in prompt
+
+    def test_a_requested_format_overrides_the_cap(self):
+        """Without this, the 150-word ceiling would truncate a cover letter."""
+        from prompts import QA_SYSTEM_PROMPT
+
+        assert "that format wins and the length ceiling below does not apply" in QA_SYSTEM_PROMPT
+
+    def test_the_actions_that_run_long_still_state_their_own_format(self):
+        from prompts import COVER_LETTER, DETAILED_REVIEW
+
+        assert "EXACTLY FOUR paragraphs" in COVER_LETTER
+        assert "Use these headings" in DETAILED_REVIEW
+
+
 def test_system_prompt_renders_both_sources():
     rendered = render_system_prompt("PROFILE-MARKER", "JD-MARKER")
     assert "PROFILE-MARKER" in rendered

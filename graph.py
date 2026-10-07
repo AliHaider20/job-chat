@@ -69,10 +69,13 @@ def route_action(state, semantic_router=None) -> str:
     """
     action = state.get("action")
     if action == "ats":
+        logger.info("Route ats_analysis | preset action %r, router bypassed", action)
         return "ats_analysis"
     if action:
+        logger.info("Route answer | preset action %r, router bypassed", action)
         return "answer"
     if semantic_router is None:
+        logger.info("Route answer | no router configured")
         return "answer"
 
     messages = state.get("messages") or []

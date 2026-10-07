@@ -7,7 +7,11 @@ evidence behind it, while sending a greeting to the full profile merely wastes
 tokens. So anything short of a clear, confident match falls back to FULL.
 """
 
+import logging
+
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 TRIVIAL = "trivial"
 SPECIFIC = "specific"
@@ -80,15 +84,30 @@ class SemanticRouter:
     def route(self, query) -> str:
         # Defensive: an unroutable query must never crash the turn.
         if not isinstance(query, str) or not query.strip():
+            logger.info("Route %s | unroutable query, not scored", FULL)
             return FULL
 
         scores = self.scores(query)
         ranked = sorted(scores.items(), key=lambda item: item[1], reverse=True)
-        (winner, top), (_, runner_up) = ranked[0], ranked[1]
+        (winner, top), (runner_up_route, runner_up) = ranked[0], ranked[1]
+        margin = top - runner_up
 
-        if winner == FULL:
-            return FULL
         # Leaving the profile behind requires confidence; FULL is the safe default.
-        if top < self.min_score or (top - runner_up) < self.min_margin:
-            return FULL
-        return winner
+        if winner == FULL:
+            chosen, why = FULL, "top match"
+        elif top < self.min_score:
+            chosen, why = FULL, f"{winner} below min_score {self.min_score}"
+        elif margin < self.min_margin:
+            chosen, why = FULL, f"{winner} over {runner_up_route} below min_margin {self.min_margin}"
+        else:
+            chosen, why = winner, "top match"
+
+        logger.info(
+            "Route %s | %s | margin %.3f | %s | query: %.60r",
+            chosen,
+            why,
+            margin,
+            " ".join(f"{route}={score:.3f}" for route, score in ranked),
+            query,
+        )
+        return chosen
