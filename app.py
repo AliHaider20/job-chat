@@ -77,8 +77,21 @@ def stream_response(chat_history, job_description, thread_id, model_query=None, 
         if action in STRUCTURED_ACTIONS:
             chat_history[-1]["content"] = "_Extracting and scoring keywords…_"
             yield chat_history
-            result = GRAPH.invoke(state, config)
-            chat_history[-1]["content"] = str(result["messages"][-1].text)
+
+            response = None
+            for mode, chunk in GRAPH.stream(
+                state, config, stream_mode=["messages", "updates"]
+            ):
+                if mode == "messages":
+                    yield chat_history
+                elif mode == "updates":
+                    ats_update = chunk.get("ats_analysis")
+                    if ats_update and ats_update.get("messages"):
+                        response = ats_update["messages"][-1]
+
+            if response is None:
+                raise RuntimeError("ATS analysis completed without a response.")
+            chat_history[-1]["content"] = str(response.text)
             yield chat_history
             return
 
@@ -89,16 +102,15 @@ def stream_response(chat_history, job_description, thread_id, model_query=None, 
     except Exception as exc:
         logger.exception("Request failed")
         detail = str(exc)
-        if "tokens per day" in detail or "TPD" in detail:
+        if "rate_limit" in detail or "429" in detail:
             detail = (
-                "Groq daily token limit reached. The quota resets on a rolling "
-                "24-hour basis, or you can raise it on the Groq billing page."
+                "OpenRouter rate limit reached. Check your account's limits or wait "
+                "before retrying."
             )
-        elif "rate_limit" in detail or "413" in detail:
+        elif "413" in detail:
             detail = (
-                "Groq per-minute token limit hit. The profile, job description, and "
-                "reserved response tokens exceed the allowance for one request. Shorten "
-                "the job description, lower LLM_MAX_TOKENS, or wait a minute and retry."
+                "The request is too large for the OpenRouter model. Shorten the job "
+                "description or lower LLM_MAX_TOKENS, then retry."
             )
         chat_history[-1]["content"] = f"**Request failed.** {detail}"
         yield chat_history
@@ -130,11 +142,14 @@ with gr.Blocks(title="job-chat", fill_height=True, analytics_enabled=False) as d
                 }
 
             chatbot = gr.Chatbot(height=520, show_label=False, resizable=True)
-            query_box = gr.Textbox(
-                placeholder="Ask a question...",
-                show_label=False,
-                submit_btn=True,
-            )
+            with gr.Row():
+                query_box = gr.Textbox(
+                    placeholder="Ask a question...",
+                    show_label=False,
+                    submit_btn=True,
+                    scale=5,
+                )
+                stop_btn = gr.Button("Stop", variant="stop", scale=1)
             clear_chat_btn = gr.Button("Reset conversation")
 
     jd_box.change(jd_status, inputs=jd_box, outputs=jd_state)
@@ -143,7 +158,9 @@ with gr.Blocks(title="job-chat", fill_height=True, analytics_enabled=False) as d
     # A new thread id starts a fresh checkpointed conversation; the old one stays on disk.
     clear_chat_btn.click(lambda: ([], new_thread_id()), outputs=[chatbot, thread_id])
 
-    query_box.submit(
+    generation_events = []
+
+    generation_events.append(query_box.submit(
         add_user_message,
         inputs=[query_box, chatbot],
         outputs=[query_box, chatbot],
@@ -152,10 +169,10 @@ with gr.Blocks(title="job-chat", fill_height=True, analytics_enabled=False) as d
         stream_response,
         inputs=[chatbot, jd_box, thread_id],
         outputs=chatbot,
-    )
+    ))
 
     for key, button in action_buttons.items():
-        button.click(
+        generation_events.append(button.click(
             partial(show_action_label, ACTIONS[key][0]),
             inputs=chatbot,
             outputs=chatbot,
@@ -164,7 +181,9 @@ with gr.Blocks(title="job-chat", fill_height=True, analytics_enabled=False) as d
             partial(run_action, key),
             inputs=[chatbot, jd_box, thread_id],
             outputs=chatbot,
-        )
+        ))
+
+    stop_btn.click(fn=None, cancels=generation_events, queue=False)
 
 
 if __name__ == "__main__":

@@ -22,8 +22,8 @@ def test_default_temperatures():
 
 
 def test_build_llm_defaults_to_the_analysis_temperature():
-    # ChatGroq clamps an exact 0.0 to 1e-08, since Groq rejects zero.
     assert build_llm().temperature == pytest.approx(get_settings().temperature, abs=1e-6)
+    assert build_llm().openai_api_base == config.OPENROUTER_BASE_URL
 
 
 def test_build_llm_accepts_an_override():

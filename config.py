@@ -11,15 +11,15 @@ load_dotenv()
 
 PROJECT_ROOT = Path(__file__).parent
 
-DEFAULT_MODEL = "openai/gpt-oss-120b"
+DEFAULT_MODEL = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_TEMPERATURE = 0.0
 # Drafting a cover letter is writing, not analysis: a little sampling gives
 # natural prose. Kept low so it does not start inventing detail.
 DEFAULT_DRAFTING_TEMPERATURE = 0.4
 # The preset actions (ATS keyword tables, detailed reviews) run long, so 2048
-# truncated them mid-answer. The ceiling is Groq's free-tier limit of 8000
-# tokens per minute, which counts input + max_tokens together: profile (~3.9k)
-# plus job description plus this value must stay under it.
+# truncated them mid-answer. This leaves room for the profile, job description,
+# and conversation history while avoiding an unnecessarily large response cap.
 DEFAULT_MAX_TOKENS = 3000
 DEFAULT_DATA_DIR = "data"
 DEFAULT_LANGFUSE_HOST = "https://cloud.langfuse.com"
@@ -38,7 +38,7 @@ class ConfigError(RuntimeError):
 
 @dataclass(frozen=True)
 class Settings:
-    groq_api_key: str
+    openrouter_api_key: str
     candidate_name: str
     data_dir: Path
     model: str
@@ -101,15 +101,15 @@ def _resolve_data_dir():
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    api_key = os.getenv("GROQ_API_KEY", "").strip()
+    api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
     if not api_key:
-        raise ConfigError("GROQ_API_KEY is not set. Add it to your .env file.")
+        raise ConfigError("OPENROUTER_API_KEY is not set. Add it to your .env file.")
 
     return Settings(
-        groq_api_key=api_key,
+        openrouter_api_key=api_key,
         candidate_name=os.getenv("CANDIDATE_NAME", "").strip() or "the candidate",
         data_dir=_resolve_data_dir(),
-        model=os.getenv("GROQ_MODEL", "").strip() or DEFAULT_MODEL,
+        model=os.getenv("OPENROUTER_MODEL", "").strip() or DEFAULT_MODEL,
         temperature=_get_float("LLM_TEMPERATURE", DEFAULT_TEMPERATURE),
         drafting_temperature=_get_float("LLM_DRAFTING_TEMPERATURE", DEFAULT_DRAFTING_TEMPERATURE),
         max_tokens=_get_int("LLM_MAX_TOKENS", DEFAULT_MAX_TOKENS),

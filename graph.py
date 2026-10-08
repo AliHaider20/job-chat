@@ -11,14 +11,14 @@ from functools import partial
 from typing import Annotated, TypedDict
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, trim_messages
-from langchain_groq import ChatGroq
+from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import START, StateGraph
 from langgraph.graph.message import add_messages
 
 import router as router_module
 from ats import ATSAnalysis, format_ats_report
-from config import get_settings
+from config import OPENROUTER_BASE_URL, get_settings
 from dataloader import ProfileLoader
 from embeddings import embed
 from prompts import (
@@ -89,8 +89,9 @@ DRAFTING_ACTIONS = {"cover_letter"}
 
 def build_llm(temperature=None):
     settings = get_settings()
-    return ChatGroq(
-        api_key=settings.groq_api_key,
+    return ChatOpenAI(
+        api_key=settings.openrouter_api_key,
+        base_url=OPENROUTER_BASE_URL,
         model=settings.model,
         temperature=settings.temperature if temperature is None else temperature,
         max_tokens=settings.max_tokens,

@@ -35,7 +35,7 @@ pip install -r requirements.txt
 **2. Configure `.env`** in the project root:
 
 ```ini
-GROQ_API_KEY=gsk_...            # required
+OPENROUTER_API_KEY=...            # required
 CANDIDATE_NAME=Your Name        # used in the system prompt
 
 # Optional — Langfuse tracing. Tracing turns on only when both keys are present.
@@ -46,10 +46,10 @@ LANGFUSE_HOST=https://us.cloud.langfuse.com
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `GROQ_API_KEY` | — | Required. Startup fails without it. |
+| `OPENROUTER_API_KEY` | — | Required. Startup fails without it. |
 | `CANDIDATE_NAME` | `the candidate` | Your name, used in the system prompt. |
 | `DATA_DIR` | `data` | Folder holding your profile documents. Relative paths resolve against the project root. |
-| `GROQ_MODEL` | `openai/gpt-oss-120b` | Model id. |
+| `OPENROUTER_MODEL` | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | OpenRouter model id. |
 | `LLM_TEMPERATURE` | `0.0` | Sampling temperature. |
 | `LLM_MAX_TOKENS` | `3000` | Response cap. See the token budget note below. |
 | `LLM_DRAFTING_TEMPERATURE` | `0.4` | Temperature for cover-letter drafting only. |
@@ -79,7 +79,9 @@ Startup fails if the directory is missing or holds no `.md` file, so do this bef
 python app.py                   # http://localhost:7860
 ```
 
-Paste a job description into the left panel, then chat or use the preset buttons.
+Paste a job description into the left panel, then chat or use the preset buttons. Select
+**Stop** beside the message box to cancel a response that's being generated; any text already
+received remains in the conversation.
 
 ## Project structure
 
@@ -182,10 +184,7 @@ every push to `main` and every pull request.
 
 ## Token budget
 
-Groq's free tier allows 8,000 tokens per minute and 200,000 per day for `openai/gpt-oss-120b`
-(check your own limits — they vary by model and account). A full-profile request sends your
-profile (~3,900 tokens) plus the job description plus the reserved response budget, so it costs
-roughly 7,000–8,000 tokens: about 25–28 such requests per day. Routed chat is much cheaper, so
-the real daily count is higher whenever questions take the `rag_answer` or `trivial_answer`
-route. `LLM_MAX_TOKENS` defaults to 3,000 to keep a full-profile request under the per-minute
-ceiling; raising it can push a request past the limit, which Groq rejects with HTTP 413.
+`LLM_MAX_TOKENS` defaults to 3,000 to cap the response size. A full-profile request also sends
+your profile (~3,900 tokens), the job description, and recent conversation history. OpenRouter
+model context windows and account limits vary, so shorten the job description or lower
+`LLM_MAX_TOKENS` if a request exceeds the model's limits.
