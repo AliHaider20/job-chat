@@ -185,6 +185,6 @@ with gr.Blocks(title="job-chat", fill_height=True, analytics_enabled=False) as d
 if __name__ == "__main__":
     logger.info("Model: %s | tracing: %s", SETTINGS.model, SETTINGS.tracing_enabled)
     try:
-        demo.launch()
+        demo.launch(server_name="0.0.0.0", server_port=7860, share=False)
     finally:
         flush()
