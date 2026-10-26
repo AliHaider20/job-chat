@@ -4,7 +4,8 @@ import pytest
 
 import config
 from config import get_settings
-from graph import DRAFTING_ACTIONS, build_llm
+from graph import build_llm
+from skills import DRAFTING_SKILLS
 
 
 def test_drafting_is_warmer_than_analysis():
@@ -12,8 +13,8 @@ def test_drafting_is_warmer_than_analysis():
     assert settings.drafting_temperature > settings.temperature
 
 
-def test_only_the_cover_letter_drafts():
-    assert DRAFTING_ACTIONS == {"cover_letter"}
+def test_only_the_writing_skills_draft():
+    assert DRAFTING_SKILLS == {"cover_letter", "email"}
 
 
 def test_default_temperatures():

@@ -1,57 +1,55 @@
-import pytest
-
-from prompts import ACTIONS, NO_JD_PLACEHOLDER, build_qa_prompt, render_system_prompt
-
-
-def test_every_action_has_a_label_and_an_instruction():
-    assert set(ACTIONS) == {"review", "ats", "cover_letter"}
-    for label, instruction in ACTIONS.values():
-        assert label.strip()
-        assert len(instruction) > 200
-
-
-def test_actions_handle_a_missing_job_description():
-    for _, instruction in ACTIONS.values():
-        assert "no job description is loaded" in instruction.lower()
-
-
-def test_ats_action_does_not_ask_the_model_to_do_arithmetic():
-    """Scoring moved to Python; the prompt must not reintroduce it."""
-    _, instruction = ACTIONS["ats"]
-    assert "Do not compute a score" in instruction
-
-
-def test_ats_action_has_no_inclusion_list_of_technologies():
-    """An 'INCLUDE: Python, Kubernetes, ...' list was once extracted as if it were
-    the job description. Technology names may appear only inside matching rules,
-    which are explicitly flagged as illustrations."""
-    _, instruction = ACTIONS["ats"]
-    assert "INCLUDE:" not in instruction
-    assert "They are not keywords to look for" in instruction
-    assert "ONLY from the text inside the <job_description>" in instruction
+from prompts import NO_JD_PLACEHOLDER, build_qa_prompt, render_system_prompt
 
 
 class TestBrevityDefaults:
-    """Chat answers are capped, but the preset actions run long by design and
-    inherit the same system prompt, so the cap has to yield to them."""
+    """Chat answers are capped, but skills define their own formats and must not be."""
 
-    def test_the_chat_prompts_cap_their_length(self):
-        from prompts import QA_SYSTEM_PROMPT, RAG_SYSTEM_PROMPT
+    def test_regular_chat_prompts_are_concise(self):
+        from prompts import QA_SYSTEM_PROMPT, RAG_SYSTEM_PROMPT, TRIVIAL_SYSTEM_PROMPT
 
-        for prompt in (QA_SYSTEM_PROMPT, RAG_SYSTEM_PROMPT):
-            assert "Ceiling of about" in prompt
+        assert len(QA_SYSTEM_PROMPT) < 1_000
+        assert len(TRIVIAL_SYSTEM_PROMPT) < 250
+        assert len(RAG_SYSTEM_PROMPT) < 500
+        assert "default to 1–3 sentences" in QA_SYSTEM_PROMPT
+        assert "one brief sentence" in TRIVIAL_SYSTEM_PROMPT
+        assert "No profile is provided" in TRIVIAL_SYSTEM_PROMPT
+        assert "Be direct and concise" in RAG_SYSTEM_PROMPT
+        assert "no unrelated background" in RAG_SYSTEM_PROMPT
+        assert "Do not treat missing excerpts as proof" in RAG_SYSTEM_PROMPT
 
-    def test_a_requested_format_overrides_the_cap(self):
-        """Without this, the 150-word ceiling would truncate a cover letter."""
-        from prompts import QA_SYSTEM_PROMPT
+    def test_the_skill_prompt_lets_the_skill_set_its_own_length(self):
+        from prompts import SKILL_SYSTEM_PROMPT
 
-        assert "that format wins and the length ceiling below does not apply" in QA_SYSTEM_PROMPT
+        assert "overrides any default brevity" in SKILL_SYSTEM_PROMPT
+        assert "Ceiling of about" not in SKILL_SYSTEM_PROMPT
 
-    def test_the_actions_that_run_long_still_state_their_own_format(self):
-        from prompts import COVER_LETTER, DETAILED_REVIEW
 
-        assert "EXACTLY FOUR paragraphs" in COVER_LETTER
-        assert "Use these headings" in DETAILED_REVIEW
+class TestSkillPrompt:
+    def test_renders_skill_profile_and_job_description(self):
+        from prompts import render_skill_prompt
+
+        rendered = render_skill_prompt("SKILL-MARKER", "PROFILE-MARKER", "JD-MARKER")
+        for marker in ("SKILL-MARKER", "PROFILE-MARKER", "JD-MARKER"):
+            assert marker in rendered
+
+    def test_substitutes_a_placeholder_for_an_absent_job_description(self):
+        from prompts import render_skill_prompt
+
+        assert NO_JD_PLACEHOLDER in render_skill_prompt("S", "P", "")
+        assert NO_JD_PLACEHOLDER in render_skill_prompt("S", "P", None)
+
+    def test_braces_in_a_skill_are_not_parsed_as_placeholders(self):
+        from prompts import build_skill_prompt
+
+        messages = build_skill_prompt().invoke({
+            "skill_text": "Use {curly} braces and {{double}} ones",
+            "context_text": "PROFILE",
+            "job_description": "JD",
+            "user_query": "go",
+            "history": [],
+        }).to_messages()
+        assert "Use {curly} braces and {{double}} ones" in messages[0].content
+        assert [m.type for m in messages] == ["system", "human"]
 
 
 def test_system_prompt_renders_both_sources():
@@ -90,16 +88,3 @@ def test_chat_prompt_places_history_between_system_and_query():
 
     assert [m.type for m in messages] == ["system", "human", "ai", "human"]
     assert messages[-1].content == "NEW"
-
-
-@pytest.mark.parametrize("key", ["review", "ats", "cover_letter"])
-def test_action_instructions_survive_prompt_templating(key):
-    """Braces in an instruction must not be parsed as template variables."""
-    _, instruction = ACTIONS[key]
-    messages = build_qa_prompt().invoke({
-        "context_text": "PROFILE",
-        "job_description": "JD",
-        "user_query": instruction,
-        "history": [],
-    }).to_messages()
-    assert messages[-1].content == instruction

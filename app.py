@@ -9,7 +9,8 @@ from langchain_core.messages import AIMessage, HumanMessage
 from config import ConfigError, get_settings
 from graph import build_graph
 from observability import build_run_config, flush
-from prompts import ACTIONS
+from graph import ATS_NODE
+from skills import ACTIONS
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("job-chat")
@@ -19,10 +20,6 @@ try:
     GRAPH = build_graph()
 except (ConfigError, FileNotFoundError) as exc:
     sys.exit(f"Startup failed: {exc}")
-
-
-# Actions whose node returns one structured object rather than a token stream.
-STRUCTURED_ACTIONS = {"ats"}
 
 
 def new_thread_id():
@@ -56,9 +53,11 @@ def run_action(key, chat_history, job_description, thread_id):
 def stream_response(chat_history, job_description, thread_id, model_query=None, action=""):
     """Stream the assistant reply for the last user message.
 
-    model_query lets a preset action send its full instruction to the model
-    while the chat shows only a short label. Structured actions cannot stream
-    token by token, so they show a placeholder and then replace it.
+    model_query lets a skill button send its instruction to the model while the
+    chat shows only a short label. The ATS node returns one structured report
+    rather than a token stream, so its text arrives as a single update (a
+    placeholder is shown meanwhile when the button asked for it). Every other
+    node streams token by token, whether a button or the router chose it.
     """
     if not chat_history or chat_history[-1]["role"] != "user":
         yield chat_history
@@ -74,31 +73,28 @@ def stream_response(chat_history, job_description, thread_id, model_query=None, 
 
     chat_history = chat_history + [{"role": "assistant", "content": ""}]
     try:
-        if action in STRUCTURED_ACTIONS:
+        if action == "ats":
             chat_history[-1]["content"] = "_Extracting and scoring keywords…_"
             yield chat_history
 
-            response = None
-            for mode, chunk in GRAPH.stream(
-                state, config, stream_mode=["messages", "updates"]
-            ):
-                if mode == "messages":
+        streamed = False
+        for mode, chunk in GRAPH.stream(state, config, stream_mode=["messages", "updates"]):
+            if mode == "messages":
+                message, meta = chunk
+                # The ATS node's model call emits structured-output fragments, not prose.
+                if meta.get("langgraph_node") == ATS_NODE:
+                    continue
+                if isinstance(message, AIMessage) and message.content:
+                    if not streamed:
+                        chat_history[-1]["content"] = ""
+                        streamed = True
+                    chat_history[-1]["content"] += message.content
                     yield chat_history
-                elif mode == "updates":
-                    ats_update = chunk.get("ats_analysis")
-                    if ats_update and ats_update.get("messages"):
-                        response = ats_update["messages"][-1]
-
-            if response is None:
-                raise RuntimeError("ATS analysis completed without a response.")
-            chat_history[-1]["content"] = str(response.text)
-            yield chat_history
-            return
-
-        for chunk, _meta in GRAPH.stream(state, config, stream_mode="messages"):
-            if isinstance(chunk, AIMessage) and chunk.content:
-                chat_history[-1]["content"] += chunk.content
-                yield chat_history
+            elif mode == "updates":
+                ats_update = chunk.get(ATS_NODE)
+                if ats_update and ats_update.get("messages"):
+                    chat_history[-1]["content"] = str(ats_update["messages"][-1].text)
+                    yield chat_history
     except Exception as exc:
         logger.exception("Request failed")
         detail = str(exc)
@@ -119,7 +115,7 @@ def stream_response(chat_history, job_description, thread_id, model_query=None, 
 with gr.Blocks(title="job-chat", fill_height=True, analytics_enabled=False) as demo:
     thread_id = gr.State(new_thread_id)
 
-    gr.Markdown("## job-chat")
+    gr.Markdown("## Job chat")
     gr.Markdown("Ask about your background, draft interview answers, or test your fit against a role.")
 
     with gr.Row(equal_height=False):

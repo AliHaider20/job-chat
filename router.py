@@ -1,10 +1,14 @@
-"""Three-way semantic router.
+"""Semantic router: three answer tiers plus the four skills.
 
 Queries are compared against the centroid of a few reference examples per
 route. Routing is deliberately asymmetric: sending a real question to a route
 without the profile produces a confident answer about the candidate with no
 evidence behind it, while sending a greeting to the full profile merely wastes
 tokens. So anything short of a clear, confident match falls back to FULL.
+
+The skill routes use the same rule: a request must clearly ask for a skill to
+get one, otherwise it is answered as ordinary chat. The route names equal the
+skill keys in skills.py.
 """
 
 import logging
@@ -16,6 +20,13 @@ logger = logging.getLogger(__name__)
 TRIVIAL = "trivial"
 SPECIFIC = "specific"
 FULL = "full"
+# Skill routes. Names match the keys in skills.SKILLS.
+REVIEW = "review"
+ATS = "ats"
+COVER_LETTER = "cover_letter"
+EMAIL = "email"
+
+SKILL_ROUTES = (REVIEW, ATS, COVER_LETTER, EMAIL)
 
 REFERENCE_QUERIES = {
     TRIVIAL: [
@@ -50,9 +61,39 @@ REFERENCE_QUERIES = {
         "what should I emphasise in the interview?",
         "what gaps do I have for this job?",
         "what do I bring to the table?",
-        "write me a cover letter",
         "how do I compare to this job description?",
         "what will they push back on?",
+    ],
+    REVIEW: [
+        "review my resume",
+        "critique my resume for this job",
+        "how can I improve my resume?",
+        "give me feedback on my resume",
+        "tear down my resume against this job description",
+        "which resume bullets are weak?",
+        "rewrite my weakest resume bullets",
+    ],
+    ATS: [
+        "what is my ATS score?",
+        "run an ATS check",
+        "which keywords am I missing for this job?",
+        "will my resume pass the applicant tracking system?",
+        "compare my resume keywords to the job description",
+        "how well do my keywords match this posting?",
+    ],
+    COVER_LETTER: [
+        "write me a cover letter",
+        "draft a cover letter for this role",
+        "I need a cover letter for this job",
+        "can you write my cover letter?",
+        "cover letter for this position",
+    ],
+    EMAIL: [
+        "write an application email",
+        "draft an email to the recruiter for this job",
+        "write a short email applying for this role",
+        "help me email the hiring manager",
+        "give me subject lines and an email to apply",
     ],
 }
 

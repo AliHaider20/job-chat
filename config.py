@@ -11,7 +11,7 @@ load_dotenv()
 
 PROJECT_ROOT = Path(__file__).parent
 
-DEFAULT_MODEL = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+DEFAULT_MODEL = "openrouter/free"
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_TEMPERATURE = 0.0
 # Drafting a cover letter is writing, not analysis: a little sampling gives
@@ -20,7 +20,9 @@ DEFAULT_DRAFTING_TEMPERATURE = 0.4
 # The preset actions (ATS keyword tables, detailed reviews) run long, so 2048
 # truncated them mid-answer. This leaves room for the profile, job description,
 # and conversation history while avoiding an unnecessarily large response cap.
-DEFAULT_MAX_TOKENS = 3000
+DEFAULT_MAX_TOKENS = 20000
+# Skill output (cover letters, reviews, ATS reports) gets its own response cap.
+DEFAULT_SKILL_MAX_TOKENS = 6500
 DEFAULT_DATA_DIR = "data"
 DEFAULT_LANGFUSE_HOST = "https://cloud.langfuse.com"
 DEFAULT_CHECKPOINT_DB = "checkpoints.sqlite"
@@ -45,6 +47,7 @@ class Settings:
     temperature: float
     drafting_temperature: float
     max_tokens: int
+    skill_max_tokens: int
     max_history_turns: int
     embedding_model: str
     retrieval_top_k: int
@@ -113,6 +116,7 @@ def get_settings() -> Settings:
         temperature=_get_float("LLM_TEMPERATURE", DEFAULT_TEMPERATURE),
         drafting_temperature=_get_float("LLM_DRAFTING_TEMPERATURE", DEFAULT_DRAFTING_TEMPERATURE),
         max_tokens=_get_int("LLM_MAX_TOKENS", DEFAULT_MAX_TOKENS),
+        skill_max_tokens=_get_int("SKILL_MAX_TOKENS", DEFAULT_SKILL_MAX_TOKENS),
         max_history_turns=_get_int("MAX_HISTORY_TURNS", DEFAULT_MAX_HISTORY_TURNS),
         embedding_model=os.getenv("EMBEDDING_MODEL", "").strip() or DEFAULT_EMBEDDING_MODEL,
         retrieval_top_k=_get_int("RETRIEVAL_TOP_K", DEFAULT_RETRIEVAL_TOP_K),

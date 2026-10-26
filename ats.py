@@ -27,6 +27,14 @@ class PriorityFix(BaseModel):
     note: str = Field(description="One sentence on what to do about it.")
 
 
+class BulletRewrite(BaseModel):
+    original: str = Field(description="An existing resume bullet, copied from the candidate documents.")
+    rewritten: str = Field(
+        description="The bullet reworded to name a missing keyword the candidate can honestly claim. "
+                    "Use a bracketed placeholder such as [ADD METRIC] instead of inventing numbers."
+    )
+
+
 class ATSAnalysis(BaseModel):
     """Keyword classification of a job description against the candidate documents."""
 
@@ -38,6 +46,11 @@ class ATSAnalysis(BaseModel):
     )
     priority_fixes: list[PriorityFix] = Field(
         description="Up to three missing keywords that would most improve the score, most valuable first."
+    )
+    rewrites: list[BulletRewrite] = Field(
+        default_factory=list,
+        description="Two or three existing resume bullets rewritten to surface the highest-priority "
+                    "honestly addable keywords. Empty if none can be added truthfully."
     )
 
 
@@ -68,5 +81,10 @@ def format_ats_report(analysis: ATSAnalysis) -> str:
         for i, fix in enumerate(analysis.priority_fixes, 1):
             tag = "can surface honestly" if fix.can_honestly_add else "requires actually learning it"
             lines.append(f"{i}. **{fix.keyword}** _({tag})_ — {fix.note}")
+
+    if analysis.rewrites:
+        lines += ["", "## Suggested rewrites", ""]
+        for i, rewrite in enumerate(analysis.rewrites, 1):
+            lines += [f"{i}. **Before:** {rewrite.original}", f"   **After:** {rewrite.rewritten}"]
 
     return "\n".join(lines)

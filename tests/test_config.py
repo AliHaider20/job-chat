@@ -21,7 +21,7 @@ def data_dir(tmp_path):
 def base_env(monkeypatch, data_dir):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     monkeypatch.setenv("DATA_DIR", str(data_dir))
-    for name in ("OPENROUTER_MODEL", "LLM_TEMPERATURE", "LLM_MAX_TOKENS", "MAX_HISTORY_TURNS",
+    for name in ("OPENROUTER_MODEL", "LLM_TEMPERATURE", "LLM_MAX_TOKENS", "SKILL_MAX_TOKENS", "MAX_HISTORY_TURNS",
                  "CANDIDATE_NAME", "LANGFUSE_HOST", "LANGFUSE_BASE_URL",
                  "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY"):
         monkeypatch.delenv(name, raising=False)
@@ -47,7 +47,7 @@ def test_data_dir_without_markdown_is_rejected(base_env, monkeypatch, tmp_path):
         get_settings()
 
 
-@pytest.mark.parametrize("var", ["LLM_TEMPERATURE", "LLM_MAX_TOKENS", "MAX_HISTORY_TURNS"])
+@pytest.mark.parametrize("var", ["LLM_TEMPERATURE", "LLM_MAX_TOKENS", "SKILL_MAX_TOKENS", "MAX_HISTORY_TURNS"])
 def test_non_numeric_values_are_rejected(base_env, monkeypatch, var):
     monkeypatch.setenv(var, "hot")
     with pytest.raises(ConfigError, match=var):
@@ -61,6 +61,7 @@ def test_defaults_apply_when_optional_vars_are_unset(base_env):
     assert settings.temperature == config.DEFAULT_TEMPERATURE
     assert settings.max_tokens == config.DEFAULT_MAX_TOKENS
     assert settings.max_history_turns == config.DEFAULT_MAX_HISTORY_TURNS
+    assert settings.skill_max_tokens == config.DEFAULT_SKILL_MAX_TOKENS == 6500
     assert settings.candidate_name == "the candidate"
 
 

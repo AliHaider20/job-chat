@@ -10,13 +10,15 @@ from graph import latest_text, route_action
     "action,expected",
     [
         ("ats", "ats_analysis"),
-        ("review", "answer"),
-        ("cover_letter", "answer"),
+        ("review", "skill_review"),
+        ("cover_letter", "skill_cover_letter"),
+        ("email", "skill_email"),
         ("", "answer"),
         (None, "answer"),
+        ("not-a-skill", "answer"),
     ],
 )
-def test_only_ats_routes_to_structured_output(action, expected):
+def test_each_skill_button_routes_to_its_own_node(action, expected):
     assert route_action({"action": action}) == expected
 
 
@@ -36,19 +38,27 @@ class StubRouter:
 
 @pytest.mark.parametrize(
     "decision,expected",
-    [("trivial", "trivial_answer"), ("specific", "rag_answer"), ("full", "answer")],
+    [
+        ("trivial", "trivial_answer"),
+        ("specific", "rag_answer"),
+        ("full", "answer"),
+        ("review", "skill_review"),
+        ("ats", "ats_analysis"),
+        ("cover_letter", "skill_cover_letter"),
+        ("email", "skill_email"),
+    ],
 )
 def test_free_chat_follows_the_semantic_router(decision, expected):
     state = {"action": "", "messages": [HumanMessage(content="a question")]}
     assert route_action(state, semantic_router=StubRouter(decision)) == expected
 
 
-@pytest.mark.parametrize("action", ["review", "cover_letter"])
-def test_preset_actions_bypass_the_router_and_keep_full_context(action):
+@pytest.mark.parametrize("action", ["review", "cover_letter", "email"])
+def test_skill_buttons_bypass_the_router_and_keep_full_context(action):
     """A retrieval miss inside a review or cover letter would drop real evidence."""
     stub = StubRouter("trivial")
     state = {"action": action, "messages": [HumanMessage(content="hello")]}
-    assert route_action(state, semantic_router=stub) == "answer"
+    assert route_action(state, semantic_router=stub) == f"skill_{action}"
     assert stub.seen == []
 
 
