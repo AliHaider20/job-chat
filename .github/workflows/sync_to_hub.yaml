@@ -14,4 +14,4 @@ jobs:
       - name: Push to hub
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: git push https://codegood:$HF_TOKEN@https://huggingface.co/spaces/codegood/job-chat main
+        run: git push https://codegood:$HF_TOKEN@huggingface.co/spaces/codegood/job-chat main
