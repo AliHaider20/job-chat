@@ -1,3 +1,14 @@
+---
+title: Job Chat
+emoji: 💬
+colorFrom: blue
+colorTo: red
+sdk: gradio
+sdk_version: "4.0.0"
+app_file: app.py
+pinned: false
+---
+
 # job-chat
 
 A private assistant for job applications. It answers questions about your background, drafts
