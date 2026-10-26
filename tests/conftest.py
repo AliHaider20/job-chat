@@ -20,7 +20,7 @@ atexit.register(shutil.rmtree, _FIXTURE_DIR, True)
 
 # load_dotenv() does not override variables that are already set, so these win
 # over any real .env on a developer machine.
-os.environ["GROQ_API_KEY"] = "test-key-not-used"
+os.environ["OPENROUTER_API_KEY"] = "test-key-not-used"
 os.environ["DATA_DIR"] = _FIXTURE_DIR
 os.environ["CANDIDATE_NAME"] = "Test Candidate"
 # Set to empty rather than deleted: load_dotenv() skips keys already present, so

@@ -35,7 +35,7 @@ pip install -r requirements.txt
 **2. Configure `.env`** in the project root:
 
 ```ini
-GROQ_API_KEY=gsk_...            # required
+OPENROUTER_API_KEY=...            # required
 CANDIDATE_NAME=Your Name        # used in the system prompt
 
 # Optional — Langfuse tracing. Tracing turns on only when both keys are present.
@@ -46,12 +46,13 @@ LANGFUSE_HOST=https://us.cloud.langfuse.com
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `GROQ_API_KEY` | — | Required. Startup fails without it. |
+| `OPENROUTER_API_KEY` | — | Required. Startup fails without it. |
 | `CANDIDATE_NAME` | `the candidate` | Your name, used in the system prompt. |
 | `DATA_DIR` | `data` | Folder holding your profile documents. Relative paths resolve against the project root. |
-| `GROQ_MODEL` | `openai/gpt-oss-120b` | Model id. |
+| `OPENROUTER_MODEL` | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | OpenRouter model id. |
 | `LLM_TEMPERATURE` | `0.0` | Sampling temperature. |
-| `LLM_MAX_TOKENS` | `3000` | Response cap. See the token budget note below. |
+| `LLM_MAX_TOKENS` | `3000` | Response cap for ordinary chat. See the token budget note below. |
+| `SKILL_MAX_TOKENS` | `6500` | Response cap for the four skills (review, ATS, cover letter, email). |
 | `LLM_DRAFTING_TEMPERATURE` | `0.4` | Temperature for cover-letter drafting only. |
 | `MAX_HISTORY_TURNS` | `10` | Turns replayed to the model per request. |
 | `EMBEDDING_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Routing and retrieval embeddings, run through fastembed (ONNX, no torch). Downloaded on first run. |
@@ -79,7 +80,9 @@ Startup fails if the directory is missing or holds no `.md` file, so do this bef
 python app.py                   # http://localhost:7860
 ```
 
-Paste a job description into the left panel, then chat or use the preset buttons.
+Paste a job description into the left panel, then chat or use the four skill buttons (Resume review, ATS score & keywords, Cover letter, Application email). Select
+**Stop** beside the message box to cancel a response that's being generated; any text already
+received remains in the conversation.
 
 ## Project structure
 
@@ -87,8 +90,10 @@ Paste a job description into the left panel, then chat or use the preset buttons
 job-chat/
 ├── app.py                       # Gradio UI and event wiring — the entry point
 ├── graph.py                     # LangGraph state graph, routing, LLM construction
-├── prompts.py                   # System prompts and the three preset action instructions
-├── router.py                    # Semantic router: trivial / specific / full
+├── prompts.py                   # Chat and skill system prompts
+├── skills.py                    # Skill registry: buttons, labels, loader
+├── skills/                      # One markdown file per skill; edit these to change behaviour
+├── router.py                    # Semantic router: trivial / specific / full / the four skills
 ├── retrieval.py                 # Chunking and similarity search over the profile
 ├── embeddings.py                # fastembed wrapper
 ├── ats.py                       # ATS schema and score calculation
@@ -106,19 +111,22 @@ job-chat/
 
 ## Graph structure
 
-A preset button routes on its `action`. Free-form chat is classified by a semantic router, which
-decides how much of your profile the question actually needs.
+A skill button routes on its `action` straight to that skill. Free-form chat is classified by a
+semantic router, which either picks a skill (when the request clearly asks for one) or decides how
+much of your profile the question actually needs.
 
 ```mermaid
 flowchart TD
     START([START]) --> DECIDE{action set?}
     DECIDE -->|ats| ATS["ats_analysis<br/>full profile, structured output"]
-    DECIDE -->|review, cover_letter| ANSWER["answer<br/>full profile + job description"]
+    DECIDE -->|review, cover_letter, email| SKILL["skill_*<br/>skill file + full profile + job description"]
     DECIDE -->|no action| ROUTER{{semantic router}}
+    ROUTER -->|review / ats / cover_letter / email| SKILL
     ROUTER -->|trivial| TRIVIAL["trivial_answer<br/>no profile"]
     ROUTER -->|specific| RAG["rag_answer<br/>retrieved excerpts"]
     ROUTER -->|full / uncertain| ANSWER
     ATS --> FINISH([END])
+    SKILL --> FINISH
     ANSWER --> FINISH
     TRIVIAL --> FINISH
     RAG --> FINISH
@@ -130,16 +138,17 @@ flowchart TD
 |---|---|
 | `messages` | Conversation, appended via `add_messages`. |
 | `job_description` | The pasted target role. |
-| `action` | `ats`, `review`, `cover_letter`, or empty for free chat. |
+| `action` | `review`, `ats`, `cover_letter`, `email`, or empty for free chat. |
 
 **Nodes**
 
 | Node | Context sent | Used for |
 |---|---|---|
-| `answer` | Full profile + job description | Preset review and cover letter, and any broad question |
+| `answer` | Full profile + job description | Any broad question |
+| `skill_review`, `skill_cover_letter`, `skill_email` | Skill file + full profile + job description | The matching button, or a chat request the router recognises. Output capped at `SKILL_MAX_TOKENS`. |
 | `rag_answer` | Top `RETRIEVAL_TOP_K` excerpts | Narrow factual questions |
 | `trivial_answer` | None | Greetings and pleasantries |
-| `ats_analysis` | Full profile + job description | ATS button only |
+| `ats_analysis` | `analyze-ats-keywords.md` + full profile + job description | The ATS button, or a chat request the router recognises |
 
 All three chat nodes replay only the last `MAX_HISTORY_TURNS` turns. Older turns stay in the
 checkpoint but are not resent, so cost per turn stays flat however long the conversation runs.
@@ -148,8 +157,8 @@ checkpoint but are not resent, so cost per turn stays flat however long the conv
 The percentage is computed in Python from the list lengths, so the score cannot contradict the
 lists it is derived from.
 
-**Routing rules.** Every preset action bypasses the router and receives the full profile: a
-retrieval miss inside an ATS score or a fit review would silently drop real evidence. For free
+**Routing rules.** Every skill button bypasses the router and receives the full profile: a
+retrieval miss inside an ATS score or a resume review would silently drop real evidence. For free
 chat, the router compares the question against the centroid of reference examples per route
 (`router.py`) and falls back to the full profile whenever the best match is weak or close to the
 runner-up. The asymmetry is deliberate — routing a greeting to the full profile only wastes
@@ -182,10 +191,7 @@ every push to `main` and every pull request.
 
 ## Token budget
 
-Groq's free tier allows 8,000 tokens per minute and 200,000 per day for `openai/gpt-oss-120b`
-(check your own limits — they vary by model and account). A full-profile request sends your
-profile (~3,900 tokens) plus the job description plus the reserved response budget, so it costs
-roughly 7,000–8,000 tokens: about 25–28 such requests per day. Routed chat is much cheaper, so
-the real daily count is higher whenever questions take the `rag_answer` or `trivial_answer`
-route. `LLM_MAX_TOKENS` defaults to 3,000 to keep a full-profile request under the per-minute
-ceiling; raising it can push a request past the limit, which Groq rejects with HTTP 413.
+`LLM_MAX_TOKENS` defaults to 3,000 to cap the response size. A full-profile request also sends
+your profile (~3,900 tokens), the job description, and recent conversation history. OpenRouter
+model context windows and account limits vary, so shorten the job description or lower
+`LLM_MAX_TOKENS` if a request exceeds the model's limits.

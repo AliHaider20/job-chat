@@ -117,9 +117,9 @@ class TestRealReferenceSet:
     """The shipped reference queries must be well formed."""
 
     def test_every_route_has_examples(self):
-        from router import REFERENCE_QUERIES
+        from router import REFERENCE_QUERIES, SKILL_ROUTES
 
-        assert set(REFERENCE_QUERIES) == {TRIVIAL, SPECIFIC, FULL}
+        assert set(REFERENCE_QUERIES) == {TRIVIAL, SPECIFIC, FULL, *SKILL_ROUTES}
         for examples in REFERENCE_QUERIES.values():
             assert len(examples) >= 5
 

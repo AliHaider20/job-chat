@@ -4,7 +4,8 @@ import pytest
 
 import config
 from config import get_settings
-from graph import DRAFTING_ACTIONS, build_llm
+from graph import build_llm
+from skills import DRAFTING_SKILLS
 
 
 def test_drafting_is_warmer_than_analysis():
@@ -12,8 +13,8 @@ def test_drafting_is_warmer_than_analysis():
     assert settings.drafting_temperature > settings.temperature
 
 
-def test_only_the_cover_letter_drafts():
-    assert DRAFTING_ACTIONS == {"cover_letter"}
+def test_only_the_writing_skills_draft():
+    assert DRAFTING_SKILLS == {"cover_letter", "email"}
 
 
 def test_default_temperatures():
@@ -22,8 +23,8 @@ def test_default_temperatures():
 
 
 def test_build_llm_defaults_to_the_analysis_temperature():
-    # ChatGroq clamps an exact 0.0 to 1e-08, since Groq rejects zero.
     assert build_llm().temperature == pytest.approx(get_settings().temperature, abs=1e-6)
+    assert build_llm().openai_api_base == config.OPENROUTER_BASE_URL
 
 
 def test_build_llm_accepts_an_override():

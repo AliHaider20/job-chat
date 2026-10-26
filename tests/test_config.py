@@ -19,17 +19,17 @@ def data_dir(tmp_path):
 
 @pytest.fixture
 def base_env(monkeypatch, data_dir):
-    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     monkeypatch.setenv("DATA_DIR", str(data_dir))
-    for name in ("GROQ_MODEL", "LLM_TEMPERATURE", "LLM_MAX_TOKENS", "MAX_HISTORY_TURNS",
+    for name in ("OPENROUTER_MODEL", "LLM_TEMPERATURE", "LLM_MAX_TOKENS", "SKILL_MAX_TOKENS", "MAX_HISTORY_TURNS",
                  "CANDIDATE_NAME", "LANGFUSE_HOST", "LANGFUSE_BASE_URL",
                  "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY"):
         monkeypatch.delenv(name, raising=False)
 
 
 def test_missing_api_key_is_rejected(base_env, monkeypatch):
-    monkeypatch.setenv("GROQ_API_KEY", "   ")
-    with pytest.raises(ConfigError, match="GROQ_API_KEY"):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "   ")
+    with pytest.raises(ConfigError, match="OPENROUTER_API_KEY"):
         get_settings()
 
 
@@ -47,7 +47,7 @@ def test_data_dir_without_markdown_is_rejected(base_env, monkeypatch, tmp_path):
         get_settings()
 
 
-@pytest.mark.parametrize("var", ["LLM_TEMPERATURE", "LLM_MAX_TOKENS", "MAX_HISTORY_TURNS"])
+@pytest.mark.parametrize("var", ["LLM_TEMPERATURE", "LLM_MAX_TOKENS", "SKILL_MAX_TOKENS", "MAX_HISTORY_TURNS"])
 def test_non_numeric_values_are_rejected(base_env, monkeypatch, var):
     monkeypatch.setenv(var, "hot")
     with pytest.raises(ConfigError, match=var):
@@ -56,15 +56,17 @@ def test_non_numeric_values_are_rejected(base_env, monkeypatch, var):
 
 def test_defaults_apply_when_optional_vars_are_unset(base_env):
     settings = get_settings()
+    assert settings.openrouter_api_key == "test-key"
     assert settings.model == config.DEFAULT_MODEL
     assert settings.temperature == config.DEFAULT_TEMPERATURE
     assert settings.max_tokens == config.DEFAULT_MAX_TOKENS
     assert settings.max_history_turns == config.DEFAULT_MAX_HISTORY_TURNS
+    assert settings.skill_max_tokens == config.DEFAULT_SKILL_MAX_TOKENS == 6500
     assert settings.candidate_name == "the candidate"
 
 
 def test_overrides_are_read_from_the_environment(base_env, monkeypatch):
-    monkeypatch.setenv("GROQ_MODEL", "some/other-model")
+    monkeypatch.setenv("OPENROUTER_MODEL", "some/other-model")
     monkeypatch.setenv("LLM_TEMPERATURE", "0.7")
     monkeypatch.setenv("MAX_HISTORY_TURNS", "3")
     settings = get_settings()

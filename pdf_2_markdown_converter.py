@@ -1,14 +1,15 @@
-from docling.document_converter import DocumentConverter
+from markitdown import MarkItDown
 import os 
 from tqdm import tqdm
+    
+md_converter = MarkItDown()
 
-file_paths = os.listdir("data")
+home_dir = "C:\\Users\\Jasmi\\OneDrive\\Desktop\\job"
+file_names = ["Haider_Ali_AI_engineer_resume.pdf", "Projects.pdf", "Volunteer Experiences.pdf"]
 
-for file_path in tqdm(file_paths):
-    if file_path.endswith(".pdf"):
-        doc_dir = "data"
-        converter = DocumentConverter()
-        doc = converter.convert(os.path.join(doc_dir, file_path)).document
+for file_name in file_names:
+    file_path = os.path.join(home_dir, file_name)
+    result = md_converter.convert(file_path)
 
-        with open(os.path.join(doc_dir, file_path.replace(".pdf", ".md")), "w", encoding="utf-8") as f:
-            f.write(doc.export_to_markdown())
+    with open(os.path.join(home_dir, "job-chat", "data", file_name.replace(".pdf", ".md")), "w", encoding="utf-8") as f:
+        f.write(result.markdown)

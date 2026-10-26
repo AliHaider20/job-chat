@@ -65,3 +65,18 @@ def test_priority_fixes_distinguish_honest_from_must_learn():
 
 def test_priority_section_omitted_when_there_are_no_fixes():
     assert "## Priority fixes" not in format_ats_report(analysis(2, 2))
+
+
+def test_rewrites_are_rendered_before_and_after():
+    from ats import BulletRewrite
+
+    result = analysis(1, 1)
+    result.rewrites = [BulletRewrite(original="Built a pipeline", rewritten="Built a Kafka pipeline")]
+    report = format_ats_report(result)
+    assert "## Suggested rewrites" in report
+    assert "**Before:** Built a pipeline" in report
+    assert "**After:** Built a Kafka pipeline" in report
+
+
+def test_rewrites_section_omitted_when_there_are_none():
+    assert "## Suggested rewrites" not in format_ats_report(analysis(2, 2))

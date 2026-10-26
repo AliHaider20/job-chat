@@ -17,8 +17,8 @@ def test_tracing_is_disabled_during_tests():
     assert get_settings().tracing_enabled is False
 
 
-def test_the_real_groq_key_is_not_used():
-    assert get_settings().groq_api_key == "test-key-not-used"
+def test_the_real_openrouter_key_is_not_used():
+    assert get_settings().openrouter_api_key == "test-key-not-used"
 
 
 def test_personal_documents_are_not_read():
