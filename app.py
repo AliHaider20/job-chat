@@ -13,6 +13,7 @@ from dataloader import convert_uploaded_documents
 from graph import ATS_NODE, build_graph
 from observability import build_run_config, flush
 from skills import ACTIONS
+import spaces
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("job-chat")
@@ -23,6 +24,10 @@ except ConfigError as exc:
     sys.exit(f"Startup failed: {exc}")
 
 SESSION_DATA = {}
+
+@spaces.GPU
+def temp():
+    pass
 
 
 def new_thread_id():
