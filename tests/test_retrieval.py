@@ -34,9 +34,57 @@ def test_content_survives_chunking():
 
 
 def test_long_documents_split_into_several_chunks():
-    body = "\n\n".join(f"Paragraph {i} " + "x" * 200 for i in range(10))
-    chunks = chunk_documents(profile(f"# Source: resume\n\n{body}"), target_chars=300)
+    body = " ".join(f"word{i}" for i in range(40))
+    chunks = chunk_documents(
+        profile(f"# Source: resume\n\n{body}"),
+        words_per_chunk=10,
+        overlap=3,
+    )
     assert len(chunks) > 1
+
+
+def test_adjacent_chunks_overlap_by_the_requested_words():
+    body = " ".join(f"word{i}" for i in range(23))
+    chunks = chunk_documents(
+        profile(f"# Source: resume\n\n{body}"),
+        words_per_chunk=10,
+        overlap=3,
+    )
+    chunk_words = [chunk.split("]\n", 1)[1].split() for chunk in chunks]
+
+    assert all(
+        previous[-3:] == current[:3]
+        for previous, current in zip(chunk_words, chunk_words[1:])
+    )
+
+
+def test_chunks_do_not_cross_source_document_boundaries():
+    chunks = chunk_documents(
+        profile(
+            "# Source: resume\n\n" + " ".join(f"resume{i}" for i in range(12)),
+            "# Source: projects\n\n" + " ".join(f"project{i}" for i in range(12)),
+        ),
+        words_per_chunk=8,
+        overlap=2,
+    )
+
+    assert all(
+        ("resume" in chunk) != ("project" in chunk)
+        for chunk in chunks
+    )
+
+
+@pytest.mark.parametrize(
+    "words_per_chunk,overlap",
+    [(0, 0), (10, -1), (10, 10), (10, 11)],
+)
+def test_invalid_word_chunk_settings_are_rejected(words_per_chunk, overlap):
+    with pytest.raises(ValueError, match="words_per_chunk > overlap"):
+        chunk_documents(
+            "text",
+            words_per_chunk=words_per_chunk,
+            overlap=overlap,
+        )
 
 
 def test_short_documents_stay_whole():
@@ -68,11 +116,18 @@ class TestSearch:
     def test_search_respects_k(self, index):
         assert len(index.search("python", k=2)) == 2
 
+    def test_hybrid_search_returns_bm25_and_dense_matches(self, index):
+        results = index.search("volunteer", k=3)
+        assert "Volunteer" in results[0]
+
     def test_k_larger_than_the_corpus_is_safe(self, index):
         assert len(index.search("python", k=99)) == 3
 
     def test_empty_query_returns_nothing(self, index):
         assert index.search("   ") == []
+
+    def test_non_positive_k_returns_nothing(self, index):
+        assert index.search("python", k=0) == []
 
     def test_search_text_joins_results(self, index):
         assert "---" in index.search_text("python", k=2)

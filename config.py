@@ -21,8 +21,11 @@ DEFAULT_DRAFTING_TEMPERATURE = 0.4
 # truncated them mid-answer. This leaves room for the profile, job description,
 # and conversation history while avoiding an unnecessarily large response cap.
 DEFAULT_MAX_TOKENS = 20000
-# Skill output (cover letters, reviews, ATS reports) gets its own response cap.
+# Prose skill output gets its own response cap.
 DEFAULT_SKILL_MAX_TOKENS = 6500
+# ATS returns a structured classification for every keyword, so it needs more
+# output room than the prose skills.
+DEFAULT_ATS_MAX_TOKENS = 12000
 DEFAULT_LANGFUSE_HOST = "https://cloud.langfuse.com"
 DEFAULT_CHECKPOINT_DB = "checkpoints.sqlite"
 # Turns of conversation replayed to the model. Older turns stay in the
@@ -30,7 +33,7 @@ DEFAULT_CHECKPOINT_DB = "checkpoints.sqlite"
 DEFAULT_MAX_HISTORY_TURNS = 10
 # Routing and retrieval. ONNX runtime, so no torch dependency.
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-DEFAULT_RETRIEVAL_TOP_K = 5
+DEFAULT_RETRIEVAL_TOP_K = 10
 
 
 class ConfigError(RuntimeError):
@@ -46,6 +49,7 @@ class Settings:
     drafting_temperature: float
     max_tokens: int
     skill_max_tokens: int
+    ats_max_tokens: int
     max_history_turns: int
     embedding_model: str
     retrieval_top_k: int
@@ -94,6 +98,7 @@ def get_settings(require_api_key=True) -> Settings:
         drafting_temperature=_get_float("LLM_DRAFTING_TEMPERATURE", DEFAULT_DRAFTING_TEMPERATURE),
         max_tokens=_get_int("LLM_MAX_TOKENS", DEFAULT_MAX_TOKENS),
         skill_max_tokens=_get_int("SKILL_MAX_TOKENS", DEFAULT_SKILL_MAX_TOKENS),
+        ats_max_tokens=_get_int("ATS_MAX_TOKENS", DEFAULT_ATS_MAX_TOKENS),
         max_history_turns=_get_int("MAX_HISTORY_TURNS", DEFAULT_MAX_HISTORY_TURNS),
         embedding_model=os.getenv("EMBEDDING_MODEL", "").strip() or DEFAULT_EMBEDDING_MODEL,
         retrieval_top_k=_get_int("RETRIEVAL_TOP_K", DEFAULT_RETRIEVAL_TOP_K),

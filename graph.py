@@ -132,10 +132,11 @@ def build_graph(api_key=None, profile_data=None):
     rag_chain = build_rag_prompt() | llm
     trivial_chain = build_trivial_prompt() | llm
     structured_llm = build_llm(
-        max_tokens=settings.skill_max_tokens, api_key=api_key
+        max_tokens=settings.ats_max_tokens, api_key=api_key
     ).with_structured_output(ATSAnalysis)
 
-    index = ProfileIndex(chunk_documents(profile_data), embed)
+    chunks = chunk_documents(profile_data)
+    index = ProfileIndex(chunks, embed)
     semantic_router = SemanticRouter(embed)
     logger.info("Indexed %d profile chunks for retrieval.", len(index.chunks))
 

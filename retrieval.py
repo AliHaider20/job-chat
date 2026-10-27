@@ -1,24 +1,28 @@
-"""Retrieval over the profile documents.
+"""Hybrid BM25 and FAISS retrieval over the uploaded profile."""
 
-The corpus is three documents and a few dozen chunks, so similarity is computed
-directly against an in-memory matrix. A vector database would add a dependency
-and an external service without changing the result at this size.
-
-Retrieval is used only for narrowly scoped questions. The preset actions always
-receive the full profile, because a retrieval miss there would silently corrupt
-an ATS score or a fit review.
-"""
-
+import bm25s
+import faiss
 import numpy as np
+import Stemmer
 
 from dataloader import SEPARATOR
 
-TARGET_CHUNK_CHARS = 600
+WORDS_PER_CHUNK = 100
+CHUNK_OVERLAP_WORDS = 15
+RRF_K = 60
 
 
-def chunk_documents(profile_text, target_chars=TARGET_CHUNK_CHARS):
-    """Split the profile into retrievable chunks, each labelled with its source."""
+def chunk_documents(
+    profile_text,
+    words_per_chunk=WORDS_PER_CHUNK,
+    overlap=CHUNK_OVERLAP_WORDS,
+):
+    """Split each source document into word windows with exact overlap."""
+    if words_per_chunk <= 0 or overlap < 0 or overlap >= words_per_chunk:
+        raise ValueError("Require words_per_chunk > overlap >= 0")
+
     chunks = []
+    step = words_per_chunk - overlap
 
     for document in profile_text.split(SEPARATOR):
         document = document.strip()
@@ -26,55 +30,81 @@ def chunk_documents(profile_text, target_chars=TARGET_CHUNK_CHARS):
             continue
 
         lines = document.splitlines()
-        source = lines[0].removeprefix("# Source:").strip() if lines[0].startswith("# Source:") else ""
-        body = "\n".join(lines[1:]).strip() if source else document
+        has_source = lines[0].startswith("# Source:")
+        source = lines[0].removeprefix("# Source:").strip() if has_source else ""
+        body = "\n".join(lines[1:]).strip() if has_source else document
+        words = body.split()
 
-        current = []
-        length = 0
-        for paragraph in (p.strip() for p in body.split("\n\n")):
-            if not paragraph:
-                continue
-            if current and length + len(paragraph) > target_chars:
-                chunks.append(_label(source, current))
-                current, length = [], 0
-            current.append(paragraph)
-            length += len(paragraph)
-
-        if current:
-            chunks.append(_label(source, current))
+        for start in range(0, len(words), step):
+            chunk = " ".join(words[start : start + words_per_chunk])
+            if chunk:
+                chunks.append(_label(source, chunk))
+            if start + words_per_chunk >= len(words):
+                break
 
     return chunks
 
 
-def _label(source, paragraphs):
-    body = "\n\n".join(paragraphs)
-    return f"[{source}]\n{body}" if source else body
+def _label(source, text):
+    return f"[{source}]\n{text}" if source else text
+
+
+def _reciprocal_rank_fusion(*rankings, k=RRF_K):
+    scores = {}
+    for ranking in rankings:
+        for rank, chunk_id in enumerate(ranking, start=1):
+            if chunk_id >= 0:
+                scores[chunk_id] = scores.get(chunk_id, 0.0) + 1.0 / (k + rank)
+    return sorted(scores, key=scores.get, reverse=True)
 
 
 class ProfileIndex:
     def __init__(self, chunks, embed_fn):
         self.chunks = list(chunks)
-        if self.chunks:
-            vectors = embed_fn(self.chunks)
-            norms = np.linalg.norm(vectors, axis=1, keepdims=True)
-            self.vectors = vectors / np.where(norms == 0, 1, norms)
-        else:
-            self.vectors = np.zeros((0, 0), dtype=np.float32)
         self.embed_fn = embed_fn
+        self.stemmer = Stemmer.Stemmer("english")
+
+        if self.chunks:
+            tokens = bm25s.tokenize(
+                self.chunks,
+                stopwords="en",
+                stemmer=self.stemmer,
+                show_progress=False,
+            )
+            self.bm25 = bm25s.BM25()
+            self.bm25.index(tokens, show_progress=False)
+
+            vectors = np.ascontiguousarray(embed_fn(self.chunks), dtype=np.float32)
+            faiss.normalize_L2(vectors)
+            self.faiss_index = faiss.IndexFlatIP(vectors.shape[1])
+            self.faiss_index.add(vectors)
+        else:
+            self.bm25 = None
+            self.faiss_index = None
 
     def search(self, query, k=5):
-        """Return the k chunks most similar to the query, best first."""
-        if not self.chunks or not query.strip():
+        """Return chunks ranked by reciprocal-rank fusion of BM25 and cosine."""
+        if not self.chunks or not query.strip() or k <= 0:
             return []
 
-        vector = self.embed_fn([query])[0]
-        norm = np.linalg.norm(vector)
-        if norm:
-            vector = vector / norm
+        candidate_count = min(k, len(self.chunks))
+        query_tokens = bm25s.tokenize(
+            [query],
+            stopwords="en",
+            stemmer=self.stemmer,
+            show_progress=False,
+        )
+        bm25_ids, _ = self.bm25.retrieve(
+            query_tokens,
+            k=candidate_count,
+            show_progress=False,
+        )
+        dense_query = np.ascontiguousarray(self.embed_fn([query]), dtype=np.float32)
+        faiss.normalize_L2(dense_query)
+        _, faiss_ids = self.faiss_index.search(dense_query, candidate_count)
 
-        similarities = self.vectors @ vector
-        top = np.argsort(similarities)[::-1][:k]
-        return [self.chunks[i] for i in top]
+        fused_ids = _reciprocal_rank_fusion(bm25_ids[0], faiss_ids[0])
+        return [self.chunks[i] for i in fused_ids[:candidate_count]]
 
     def search_text(self, query, k=5):
         found = self.search(query, k)

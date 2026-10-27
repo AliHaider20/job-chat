@@ -6,6 +6,7 @@ from pathlib import Path
 
 import gradio as gr
 from langchain_core.messages import AIMessage, HumanMessage
+from openai import LengthFinishReasonError
 
 from config import ConfigError, get_settings
 from dataloader import convert_uploaded_documents
@@ -35,6 +36,28 @@ def discard_session_data(session_id):
 def graph_for_session(session_id):
     session = SESSION_DATA.get(session_id)
     return session.get("graph") if session else None
+
+
+def request_error_detail(exc):
+    if isinstance(exc, LengthFinishReasonError):
+        return (
+            "The ATS report exceeded the model's response-token limit and was incomplete. "
+            "Retry with a shorter job description, choose a model with a larger output "
+            "limit, or raise ATS_MAX_TOKENS if the model supports it."
+        )
+
+    detail = str(exc)
+    if "rate_limit" in detail or "429" in detail:
+        return (
+            "OpenRouter rate limit reached. Check your account's limits or wait "
+            "before retrying."
+        )
+    if "413" in detail:
+        return (
+            "The request is too large for the OpenRouter model. Shorten the job "
+            "description or lower LLM_MAX_TOKENS, then retry."
+        )
+    return detail
 
 
 def connect_api_key(api_key, session_id):
@@ -190,17 +213,7 @@ def stream_response(
                     yield chat_history
     except Exception as exc:
         logger.exception("Request failed")
-        detail = str(exc)
-        if "rate_limit" in detail or "429" in detail:
-            detail = (
-                "OpenRouter rate limit reached. Check your account's limits or wait "
-                "before retrying."
-            )
-        elif "413" in detail:
-            detail = (
-                "The request is too large for the OpenRouter model. Shorten the job "
-                "description or lower LLM_MAX_TOKENS, then retry."
-            )
+        detail = request_error_detail(exc)
         chat_history[-1]["content"] = f"**Request failed.** {detail}"
         yield chat_history
 
@@ -211,21 +224,19 @@ with gr.Blocks(title="job-chat", fill_height=True, analytics_enabled=False) as d
 
     gr.Markdown("## Job chat")
     gr.Markdown("Ask about your background, draft interview answers, or test your fit against a role.")
-    with gr.Accordion(
-        "OpenRouter API key", open=not bool(SETTINGS.openrouter_api_key)
-    ):
-        api_key_box = gr.Textbox(
-            label="Paste your OpenRouter API key",
-            placeholder="sk-or-v1-…",
-            type="password",
-            show_label=True,
-        )
-        connect_key_btn = gr.Button("Connect key")
-        key_status = gr.Markdown(
-            "Using the server-configured key."
-            if SETTINGS.openrouter_api_key
-            else "Your key is kept in server memory for this browser session and is not written to disk."
-        )
+    gr.Markdown("### OpenRouter API key")
+    api_key_box = gr.Textbox(
+        label="Paste your OpenRouter API key",
+        placeholder="sk-or-v1-…",
+        type="password",
+        show_label=True,
+    )
+    connect_key_btn = gr.Button("Connect key")
+    key_status = gr.Markdown(
+        "Using the server-configured key."
+        if SETTINGS.openrouter_api_key
+        else "An API key is required to use the model. Your key is kept in server memory for this browser session and is not written to disk."
+    )
 
     with gr.Row(equal_height=False):
         with gr.Column(scale=1):

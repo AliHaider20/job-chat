@@ -46,7 +46,7 @@ pip install -r requirements.txt
 **2. Configure `.env`** in the project root (optional if you will paste your key into the UI):
 
 ```ini
-OPENROUTER_API_KEY=...            # optional; can also be entered in the UI
+OPENROUTER_API_KEY=...            # required to use the model; can also be entered in the UI
 CANDIDATE_NAME=Your Name        # used in the system prompt
 
 # Optional — Langfuse tracing. Tracing turns on only when both keys are present.
@@ -57,16 +57,17 @@ LANGFUSE_HOST=https://us.cloud.langfuse.com
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `OPENROUTER_API_KEY` | — | Optional. If omitted, paste a key into the app's OpenRouter API key panel. |
+| `OPENROUTER_API_KEY` | — | Required to use the model. Set it here or paste a key into the always-visible UI field. |
 | `CANDIDATE_NAME` | `the candidate` | Your name, used in the system prompt. |
 | `OPENROUTER_MODEL` | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | OpenRouter model id. |
 | `LLM_TEMPERATURE` | `0.0` | Sampling temperature. |
-| `LLM_MAX_TOKENS` | `3000` | Response cap for ordinary chat. See the token budget note below. |
-| `SKILL_MAX_TOKENS` | `6500` | Response cap for the four skills (review, ATS, cover letter, email). |
+| `LLM_MAX_TOKENS` | `20000` | Response cap for ordinary chat. See the token budget note below. |
+| `SKILL_MAX_TOKENS` | `6500` | Response cap for prose skills (review, cover letter, email). |
+| `ATS_MAX_TOKENS` | `12000` | Response cap for ATS structured output. Increase only if the selected model supports it. |
 | `LLM_DRAFTING_TEMPERATURE` | `0.4` | Temperature for cover-letter drafting only. |
 | `MAX_HISTORY_TURNS` | `10` | Turns replayed to the model per request. |
 | `EMBEDDING_MODEL` | `sentence-transformers/all-MiniLM-L6-v2` | Routing and retrieval embeddings, run through fastembed (ONNX, no torch). Downloaded on first run. |
-| `RETRIEVAL_TOP_K` | `5` | Excerpts retrieved for a narrow question. |
+| `RETRIEVAL_TOP_K` | `10` | Excerpts retrieved for a narrow question. |
 | `CHECKPOINT_DB` | `checkpoints.sqlite` | Where conversation threads persist. |
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | — | Enable tracing when both are set. |
 | `LANGFUSE_HOST` (alias: `LANGFUSE_BASE_URL`) | `https://cloud.langfuse.com` | Langfuse region. Use `https://us.cloud.langfuse.com` if your keys are US. |
@@ -77,9 +78,9 @@ LANGFUSE_HOST=https://us.cloud.langfuse.com
 python app.py                   # http://localhost:7860
 ```
 
-If you did not set `OPENROUTER_API_KEY` in `.env`, paste it into the **OpenRouter API key** panel and select **Connect key**. The key stays in server memory for that browser session and is not written to disk. Only enter a key when you trust the server running this app.
+If you did not set `OPENROUTER_API_KEY` in `.env`, paste it into the **OpenRouter API key** field and select **Connect key**. An API key is required to use the model. A key entered in the UI stays in server memory for that browser session and is not written to disk. Only enter a key when you trust the server running this app.
 
-Upload one or more PDF, DOCX, Markdown, or text files in **Your profile**. The app converts them to Markdown in memory and loads them into the profile pipeline; a later upload replaces the current profile. Uploads are not written to the project `data/` directory. Add a job description in **Target role** before chatting or using a skill button; requests without one do not call the model.
+Upload one or more PDF, DOCX, Markdown, or text files in **Your profile**. The app converts them to Markdown in memory and loads them into the profile pipeline; a later upload replaces the current profile. For PDFs, RapidOCR with ONNX Runtime is used as a fallback if MarkItDown fails or extracts no text, including for scanned/image-only pages. Uploads are not written to the project `data/` directory. Add a job description in **Target role** before chatting or using a skill button; requests without one do not call the model.
 
 Select
 **Stop** beside the message box to cancel a response that's being generated; any text already
@@ -159,6 +160,11 @@ checkpoint but are not resent, so cost per turn stays flat however long the conv
 The percentage is computed in Python from the list lengths, so the score cannot contradict the
 lists it is derived from.
 
+**Retrieval.** Uploaded profile documents are split into 100-word windows with 15 words of
+overlap, keeping adjacent context available to narrow searches. The `rag_answer` index combines
+BM25 keyword rankings with FAISS cosine-similarity rankings over FastEmbed vectors, then merges
+the results with reciprocal-rank fusion. This hybrid index is rebuilt for each uploaded profile.
+
 **Routing rules.** Every skill button bypasses the router and receives the full profile: a
 retrieval miss inside an ATS score or a resume review would silently drop real evidence. For free
 chat, the router compares the question against the centroid of reference examples per route
@@ -193,7 +199,7 @@ every push to `main` and every pull request.
 
 ## Token budget
 
-`LLM_MAX_TOKENS` defaults to 3,000 to cap the response size. A full-profile request also sends
-your profile (~3,900 tokens), the job description, and recent conversation history. OpenRouter
-model context windows and account limits vary, so shorten the job description or lower
-`LLM_MAX_TOKENS` if a request exceeds the model's limits.
+`LLM_MAX_TOKENS` defaults to 20,000 to cap ordinary chat responses. ATS uses its own
+12,000-token cap because it returns a structured classification of every job-description
+keyword. OpenRouter model output limits vary; if ATS reports a truncated response, choose a
+model with a larger output limit or lower `ATS_MAX_TOKENS` to fit the selected model.

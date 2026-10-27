@@ -29,7 +29,6 @@ Construct the email body using this exact 3-part sequence:
 - **Do Not Highlight Gaps:** If the user's data does not perfectly match every requirement of the job description, focus entirely on the overlapping strengths. Do not apologize for or acknowledge missing skills.
 
 ## Execution Steps
-1. **Analyze:** Ingest all provided background material. Silently discard anything irrelevant to the target job.
-2. **Draft Subject Lines:** Generate 3 highly optimized, scannable subject line options (e.g., "[Role] Application - [Name] - [Top Credential]").
-3. **Draft the Email:** Write the email strictly following the structure and tone rules above. Target length: ~100 words.
-4. **Format Output:** Present the subject lines, the email draft, and a brief 1-bullet explanation of why those specific bullets were chosen.
+1. **Think privately:** Compare the job description with the provided background, select only relevant and supported evidence, and plan a concise email. Do not reveal analysis or reasoning.
+2. **Draft the email:** Follow the structure and tone rules above. Use one subject line, not options. Do not invent facts or metrics, and do not include bracketed placeholders; omit unsupported details instead.
+3. **Return only the finished email:** Include a single `Subject:` line, greeting, email body, and sign-off. Do not add a heading, introduction, alternatives, explanation, rationale, suggestions, or any other text outside the email.

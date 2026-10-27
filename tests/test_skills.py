@@ -1,4 +1,4 @@
-"""Skill files, registry, and the 6500-token cap."""
+"""Skill files, registry, and skill-specific response caps."""
 
 import pytest
 
@@ -47,7 +47,16 @@ def test_cover_letter_skill_requires_a_conventional_letter_only():
     assert "bullet points" in text
 
 
-def test_skill_responses_are_capped_at_6500_tokens():
+def test_email_skill_returns_only_one_final_email_without_explanation():
+    text = load_skill("email")
+    assert "one subject line, not options" in text
+    assert "Do not reveal analysis or reasoning" in text
+    assert "Return only the finished email" in text
+    assert "Do not add a heading, introduction, alternatives, explanation, rationale, suggestions" in text
+    assert "3 highly optimized" not in text
+
+
+def test_prose_skill_responses_are_capped_at_6500_tokens():
     assert get_settings().skill_max_tokens == 6500 == config.DEFAULT_SKILL_MAX_TOKENS
 
 

@@ -18,6 +18,18 @@ def test_chat_without_job_description_does_not_access_the_graph(monkeypatch):
     assert "Paste a job description" in result[0][-1]["content"]
 
 
+def test_length_limit_error_explains_how_to_retry():
+    from types import SimpleNamespace
+
+    from openai import LengthFinishReasonError
+
+    completion = SimpleNamespace(usage=None)
+    detail = app.request_error_detail(LengthFinishReasonError(completion=completion))
+
+    assert "ATS report exceeded" in detail
+    assert "ATS_MAX_TOKENS" in detail
+
+
 def test_upload_builds_a_per_session_graph(monkeypatch, tmp_path):
     markdown_file = tmp_path / "resume.md"
     markdown_file.write_text("# Resume", encoding="utf-8")

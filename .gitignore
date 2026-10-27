@@ -8,3 +8,5 @@ __pycache__/
 # LangGraph checkpoints
 checkpoints.sqlite
 checkpoints.sqlite-*
+
+experiment.ipynb
