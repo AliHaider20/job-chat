@@ -2,28 +2,97 @@ import logging
 import sys
 import uuid
 from functools import partial
+from pathlib import Path
 
 import gradio as gr
 from langchain_core.messages import AIMessage, HumanMessage
 
 from config import ConfigError, get_settings
-from graph import build_graph
+from dataloader import convert_uploaded_documents
+from graph import ATS_NODE, build_graph
 from observability import build_run_config, flush
-from graph import ATS_NODE
 from skills import ACTIONS
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("job-chat")
 
 try:
-    SETTINGS = get_settings()
-    GRAPH = build_graph()
-except (ConfigError, FileNotFoundError) as exc:
+    SETTINGS = get_settings(require_api_key=False)
+except ConfigError as exc:
     sys.exit(f"Startup failed: {exc}")
+
+SESSION_DATA = {}
 
 
 def new_thread_id():
     return str(uuid.uuid4())
+
+
+def discard_session_data(session_id):
+    SESSION_DATA.pop(session_id, None)
+
+
+def graph_for_session(session_id):
+    session = SESSION_DATA.get(session_id)
+    return session.get("graph") if session else None
+
+
+def connect_api_key(api_key, session_id):
+    api_key = (api_key or "").strip()
+    if not api_key:
+        return "", "Paste your OpenRouter API key to connect."
+
+    session = SESSION_DATA.setdefault(session_id, {})
+    session["api_key"] = api_key
+    profile_data = session.get("profile_data")
+    if not profile_data:
+        return "", "Key saved for this browser session. Upload your profile documents to continue."
+
+    try:
+        session["graph"] = build_graph(api_key=api_key, profile_data=profile_data)
+    except Exception as exc:
+        detail = str(exc).replace(api_key, "[redacted]")
+        logger.error("Could not initialize an OpenRouter graph: %s", detail)
+        return "", f"**Could not connect.** {detail}"
+
+    return "", "Key and profile ready for this browser session. Send a message to verify the key."
+
+
+def process_profile_upload(files, session_id):
+    if not files:
+        return "Choose one or more profile documents to upload."
+
+    try:
+        profile_data = convert_uploaded_documents(files)
+    except Exception as exc:
+        logger.error("Could not process profile upload: %s", exc)
+        return f"**Upload failed.** {exc}"
+
+    session = SESSION_DATA.setdefault(session_id, {})
+    session["profile_data"] = profile_data
+    session["graph"] = None
+    api_key = session.get("api_key") or SETTINGS.openrouter_api_key
+
+    if not api_key:
+        return "Profile converted to Markdown and held for this session. Connect your OpenRouter key to continue."
+
+    try:
+        session["graph"] = build_graph(api_key=api_key, profile_data=profile_data)
+    except Exception as exc:
+        detail = str(exc).replace(api_key, "[redacted]")
+        logger.error("Could not initialize the uploaded profile: %s", detail)
+        return f"**Profile converted, but setup failed.** {detail}"
+
+    names = ", ".join(Path(file_path).name for file_path in files)
+    return f"**Profile ready.** Converted and loaded: {names}"
+
+
+def clear_profile(session_id):
+    session = SESSION_DATA.get(session_id)
+    if session:
+        session.pop("profile_data", None)
+        session.pop("graph", None)
+    return None, "Uploaded profile cleared from this session."
 
 
 def jd_status(job_description):
@@ -43,14 +112,21 @@ def show_action_label(label, chat_history):
     return chat_history + [{"role": "user", "content": f"**{label}**"}]
 
 
-def run_action(key, chat_history, job_description, thread_id):
+def run_action(key, chat_history, job_description, thread_id, session_id):
     _, instruction = ACTIONS[key]
     yield from stream_response(
-        chat_history, job_description, thread_id, model_query=instruction, action=key
+        chat_history,
+        job_description,
+        thread_id,
+        model_query=instruction,
+        action=key,
+        session_id=session_id,
     )
 
 
-def stream_response(chat_history, job_description, thread_id, model_query=None, action=""):
+def stream_response(
+    chat_history, job_description, thread_id, session_id=None, model_query=None, action=""
+):
     """Stream the assistant reply for the last user message.
 
     model_query lets a skill button send its instruction to the model while the
@@ -64,6 +140,23 @@ def stream_response(chat_history, job_description, thread_id, model_query=None, 
         return
 
     job_description = (job_description or "").strip()
+    if not job_description:
+        chat_history = chat_history + [{
+            "role": "assistant",
+            "content": "Paste a job description in the **Target role** panel before asking a question or using a skill.",
+        }]
+        yield chat_history
+        return
+
+    graph = graph_for_session(session_id)
+    if graph is None:
+        chat_history = chat_history + [{
+            "role": "assistant",
+            "content": "Upload your profile documents and connect an OpenRouter API key before chatting.",
+        }]
+        yield chat_history
+        return
+
     state = {
         "messages": [HumanMessage(content=model_query or chat_history[-1]["content"])],
         "job_description": job_description,
@@ -78,7 +171,7 @@ def stream_response(chat_history, job_description, thread_id, model_query=None, 
             yield chat_history
 
         streamed = False
-        for mode, chunk in GRAPH.stream(state, config, stream_mode=["messages", "updates"]):
+        for mode, chunk in graph.stream(state, config, stream_mode=["messages", "updates"]):
             if mode == "messages":
                 message, meta = chunk
                 # The ATS node's model call emits structured-output fragments, not prose.
@@ -114,12 +207,39 @@ def stream_response(chat_history, job_description, thread_id, model_query=None, 
 
 with gr.Blocks(title="job-chat", fill_height=True, analytics_enabled=False) as demo:
     thread_id = gr.State(new_thread_id)
+    session_id = gr.State(new_thread_id, delete_callback=discard_session_data)
 
     gr.Markdown("## Job chat")
     gr.Markdown("Ask about your background, draft interview answers, or test your fit against a role.")
+    with gr.Accordion(
+        "OpenRouter API key", open=not bool(SETTINGS.openrouter_api_key)
+    ):
+        api_key_box = gr.Textbox(
+            label="Paste your OpenRouter API key",
+            placeholder="sk-or-v1-…",
+            type="password",
+            show_label=True,
+        )
+        connect_key_btn = gr.Button("Connect key")
+        key_status = gr.Markdown(
+            "Using the server-configured key."
+            if SETTINGS.openrouter_api_key
+            else "Your key is kept in server memory for this browser session and is not written to disk."
+        )
 
     with gr.Row(equal_height=False):
         with gr.Column(scale=1):
+            gr.Markdown("### Your profile")
+            profile_upload = gr.File(
+                label="Upload profile documents",
+                file_count="multiple",
+                file_types=[".pdf", ".docx", ".md", ".txt"],
+                type="filepath",
+            )
+            profile_status = gr.Markdown(
+                "Upload PDF, DOCX, Markdown, or text files. A new upload replaces the previous profile."
+            )
+            clear_profile_btn = gr.Button("Clear uploaded profile")
             gr.Markdown("### Target role")
             jd_box = gr.Textbox(
                 lines=18,
@@ -150,6 +270,21 @@ with gr.Blocks(title="job-chat", fill_height=True, analytics_enabled=False) as d
 
     jd_box.change(jd_status, inputs=jd_box, outputs=jd_state)
     clear_jd_btn.click(lambda: "", outputs=jd_box)
+    connect_key_btn.click(
+        connect_api_key,
+        inputs=[api_key_box, session_id],
+        outputs=[api_key_box, key_status],
+    )
+    profile_upload.upload(
+        process_profile_upload,
+        inputs=[profile_upload, session_id],
+        outputs=profile_status,
+    )
+    clear_profile_btn.click(
+        clear_profile,
+        inputs=session_id,
+        outputs=[profile_upload, profile_status],
+    )
 
     # A new thread id starts a fresh checkpointed conversation; the old one stays on disk.
     clear_chat_btn.click(lambda: ([], new_thread_id()), outputs=[chatbot, thread_id])
@@ -163,7 +298,7 @@ with gr.Blocks(title="job-chat", fill_height=True, analytics_enabled=False) as d
         queue=False,
     ).then(
         stream_response,
-        inputs=[chatbot, jd_box, thread_id],
+        inputs=[chatbot, jd_box, thread_id, session_id],
         outputs=chatbot,
     ))
 
@@ -175,7 +310,7 @@ with gr.Blocks(title="job-chat", fill_height=True, analytics_enabled=False) as d
             queue=False,
         ).then(
             partial(run_action, key),
-            inputs=[chatbot, jd_box, thread_id],
+            inputs=[chatbot, jd_box, thread_id, session_id],
             outputs=chatbot,
         ))
 

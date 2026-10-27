@@ -43,10 +43,10 @@ Then:
 pip install -r requirements.txt
 ```
 
-**2. Configure `.env`** in the project root:
+**2. Configure `.env`** in the project root (optional if you will paste your key into the UI):
 
 ```ini
-OPENROUTER_API_KEY=...            # required
+OPENROUTER_API_KEY=...            # optional; can also be entered in the UI
 CANDIDATE_NAME=Your Name        # used in the system prompt
 
 # Optional — Langfuse tracing. Tracing turns on only when both keys are present.
@@ -57,9 +57,8 @@ LANGFUSE_HOST=https://us.cloud.langfuse.com
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `OPENROUTER_API_KEY` | — | Required. Startup fails without it. |
+| `OPENROUTER_API_KEY` | — | Optional. If omitted, paste a key into the app's OpenRouter API key panel. |
 | `CANDIDATE_NAME` | `the candidate` | Your name, used in the system prompt. |
-| `DATA_DIR` | `data` | Folder holding your profile documents. Relative paths resolve against the project root. |
 | `OPENROUTER_MODEL` | `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free` | OpenRouter model id. |
 | `LLM_TEMPERATURE` | `0.0` | Sampling temperature. |
 | `LLM_MAX_TOKENS` | `3000` | Response cap for ordinary chat. See the token budget note below. |
@@ -72,26 +71,17 @@ LANGFUSE_HOST=https://us.cloud.langfuse.com
 | `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` | — | Enable tracing when both are set. |
 | `LANGFUSE_HOST` (alias: `LANGFUSE_BASE_URL`) | `https://cloud.langfuse.com` | Langfuse region. Use `https://us.cloud.langfuse.com` if your keys are US. |
 
-**3. Add your documents.** Put your resume, project write-ups, and any other career documents
-in `data/`. PDFs must be converted to Markdown first — the app reads only `.md`:
-
-```bash
-pip install -r requirements-ingest.txt   # docling, heavy; needed only for this step
-python pdf_2_markdown_converter.py
-```
-
-The converter reads and writes `data/` directly; it does not honour `DATA_DIR`. If you point
-`DATA_DIR` elsewhere, convert in `data/` first and move the `.md` files across.
-
-Startup fails if the directory is missing or holds no `.md` file, so do this before step 4.
-
-**4. Run**
+**3. Run**
 
 ```bash
 python app.py                   # http://localhost:7860
 ```
 
-Paste a job description into the left panel, then chat or use the four skill buttons (Resume review, ATS score & keywords, Cover letter, Application email). Select
+If you did not set `OPENROUTER_API_KEY` in `.env`, paste it into the **OpenRouter API key** panel and select **Connect key**. The key stays in server memory for that browser session and is not written to disk. Only enter a key when you trust the server running this app.
+
+Upload one or more PDF, DOCX, Markdown, or text files in **Your profile**. The app converts them to Markdown in memory and loads them into the profile pipeline; a later upload replaces the current profile. Uploads are not written to the project `data/` directory. Add a job description in **Target role** before chatting or using a skill button; requests without one do not call the model.
+
+Select
 **Stop** beside the message box to cancel a response that's being generated; any text already
 received remains in the conversation.
 
@@ -108,17 +98,18 @@ job-chat/
 ├── retrieval.py                 # Chunking and similarity search over the profile
 ├── embeddings.py                # fastembed wrapper
 ├── ats.py                       # ATS schema and score calculation
-├── dataloader.py                # Loads and concatenates the Markdown profile documents
+├── dataloader.py                # Converts uploads and formats Markdown profile documents
 ├── config.py                    # Environment settings with validation
 ├── observability.py             # Langfuse tracing (optional, fails open)
-├── pdf_2_markdown_converter.py  # One-off: PDF -> Markdown
-├── data/                        # Your documents (gitignored)
 ├── tests/                       # Unit tests; no API calls
 ├── .github/workflows/tests.yml  # CI: runs the suite on push and pull request
 ├── requirements.txt             # Runtime
-├── requirements-ingest.txt      # PDF conversion only
 └── requirements-dev.txt         # Tests (install on top of requirements.txt)
 ```
+
+Uploaded profile documents are held in server memory for the active Gradio session. Only upload
+personal documents to a deployment you trust. Hugging Face may also process temporary upload
+files as part of serving the app; consult the Space's privacy and storage settings.
 
 ## Graph structure
 
@@ -197,7 +188,7 @@ python -m pytest tests/ -q
 Unit tests only — no API calls, no keys needed. They cover the ATS score arithmetic, config
 validation, document loading, chunking and retrieval, semantic routing, node selection, history
 trimming, temperature selection, and prompt templating. `tests/test_isolation.py` asserts the
-suite never touches your real credentials or your `data/` documents. CI runs the same command on
+suite never touches your real credentials or profile documents. CI runs the same command on
 every push to `main` and every pull request.
 
 ## Token budget

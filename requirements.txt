@@ -6,6 +6,7 @@ langgraph==1.2.10
 langgraph-checkpoint-sqlite==3.1.1
 langfuse==4.14.3
 python-dotenv==1.2.2
+markitdown[docx,pdf]==0.1.9
 
 # Makes Python trust the OS certificate store. Required on networks that do
 # TLS inspection (corporate proxy / antivirus); harmless elsewhere.

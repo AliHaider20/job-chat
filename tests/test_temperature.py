@@ -31,6 +31,16 @@ def test_build_llm_accepts_an_override():
     assert build_llm(0.4).temperature == 0.4
 
 
+def test_build_llm_accepts_a_ui_key_without_an_environment_key(monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY")
+    get_settings.cache_clear()
+    try:
+        llm = build_llm(api_key="ui-key")
+        assert llm.openai_api_key.get_secret_value() == "ui-key"
+    finally:
+        get_settings.cache_clear()
+
+
 def test_drafting_temperature_is_configurable(monkeypatch):
     monkeypatch.setenv("LLM_DRAFTING_TEMPERATURE", "0.9")
     get_settings.cache_clear()

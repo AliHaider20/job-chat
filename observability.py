@@ -21,7 +21,7 @@ def _init():
         return
     _initialised = True
 
-    settings = get_settings()
+    settings = get_settings(require_api_key=False)
     if not settings.tracing_enabled:
         logger.info("Langfuse tracing disabled (LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY not set).")
         return

@@ -21,7 +21,5 @@ def test_the_real_openrouter_key_is_not_used():
     assert get_settings().openrouter_api_key == "test-key-not-used"
 
 
-def test_personal_documents_are_not_read():
-    data_dir = get_settings().data_dir
-    assert data_dir.name != "data"
-    assert [p.name for p in data_dir.glob("*.md")] == ["fixture.md"]
+def test_profile_documents_are_not_loaded_during_startup():
+    assert not hasattr(get_settings(), "data_dir")

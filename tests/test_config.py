@@ -12,17 +12,10 @@ def clear_settings_cache():
 
 
 @pytest.fixture
-def data_dir(tmp_path):
-    (tmp_path / "resume.md").write_text("# Resume", encoding="utf-8")
-    return tmp_path
-
-
-@pytest.fixture
-def base_env(monkeypatch, data_dir):
+def base_env(monkeypatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
-    monkeypatch.setenv("DATA_DIR", str(data_dir))
     for name in ("OPENROUTER_MODEL", "LLM_TEMPERATURE", "LLM_MAX_TOKENS", "SKILL_MAX_TOKENS", "MAX_HISTORY_TURNS",
-                 "CANDIDATE_NAME", "LANGFUSE_HOST", "LANGFUSE_BASE_URL",
+                 "CANDIDATE_NAME", "DATA_DIR", "LANGFUSE_HOST", "LANGFUSE_BASE_URL",
                  "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY"):
         monkeypatch.delenv(name, raising=False)
 
@@ -33,18 +26,12 @@ def test_missing_api_key_is_rejected(base_env, monkeypatch):
         get_settings()
 
 
-def test_nonexistent_data_dir_is_rejected(base_env, monkeypatch, tmp_path):
-    monkeypatch.setenv("DATA_DIR", str(tmp_path / "nope"))
-    with pytest.raises(ConfigError, match="DATA_DIR does not exist"):
-        get_settings()
+def test_api_key_can_be_supplied_later_by_the_ui(base_env, monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY")
 
+    settings = get_settings(require_api_key=False)
 
-def test_data_dir_without_markdown_is_rejected(base_env, monkeypatch, tmp_path):
-    empty = tmp_path / "empty"
-    empty.mkdir()
-    monkeypatch.setenv("DATA_DIR", str(empty))
-    with pytest.raises(ConfigError, match="No .md documents"):
-        get_settings()
+    assert settings.openrouter_api_key == ""
 
 
 @pytest.mark.parametrize("var", ["LLM_TEMPERATURE", "LLM_MAX_TOKENS", "SKILL_MAX_TOKENS", "MAX_HISTORY_TURNS"])
@@ -75,16 +62,12 @@ def test_overrides_are_read_from_the_environment(base_env, monkeypatch):
     assert settings.max_history_turns == 3
 
 
-def test_relative_data_dir_resolves_against_the_project_root(base_env, monkeypatch, tmp_path):
-    """A relative DATA_DIR must not depend on the process working directory."""
-    project_root = tmp_path / "project"
-    (project_root / "docs").mkdir(parents=True)
-    (project_root / "docs" / "resume.md").write_text("# Resume", encoding="utf-8")
+def test_settings_do_not_require_a_data_directory(base_env, monkeypatch, tmp_path):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "missing"))
 
-    monkeypatch.setattr(config, "PROJECT_ROOT", project_root)
-    monkeypatch.setenv("DATA_DIR", "docs")
+    settings = get_settings()
 
-    assert get_settings().data_dir == project_root / "docs"
+    assert not hasattr(settings, "data_dir")
 
 
 class TestLangfuseHost:

@@ -3,7 +3,8 @@
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, trim_messages
 
-from graph import latest_text, route_action
+from config import ConfigError
+from graph import build_graph, latest_text, route_action
 
 
 @pytest.mark.parametrize(
@@ -24,6 +25,11 @@ def test_each_skill_button_routes_to_its_own_node(action, expected):
 
 def test_missing_action_key_falls_back_to_chat():
     assert route_action({}) == "answer"
+
+
+def test_graph_rejects_empty_profile_before_model_setup():
+    with pytest.raises(ConfigError, match="Upload profile documents"):
+        build_graph(api_key="test-key", profile_data="  ")
 
 
 class StubRouter:

@@ -1,49 +1,44 @@
 import pytest
 
-from dataloader import ProfileLoader
+from dataloader import convert_uploaded_documents
 
 
-@pytest.fixture
-def docs(tmp_path):
-    (tmp_path / "resume.md").write_text("Resume body", encoding="utf-8")
-    (tmp_path / "projects.md").write_text("Projects body", encoding="utf-8")
-    (tmp_path / "ignored.txt").write_text("not markdown", encoding="utf-8")
-    return tmp_path
+def test_uploaded_markdown_and_text_are_formatted_without_disk_output(tmp_path):
+    markdown = tmp_path / "resume.md"
+    text = tmp_path / "projects.txt"
+    markdown.write_text("# Resume", encoding="utf-8")
+    text.write_text("Project work", encoding="utf-8")
+
+    profile = convert_uploaded_documents([str(markdown), str(text)])
+
+    assert "# Source: resume" in profile
+    assert "# Resume" in profile
+    assert "# Source: projects" in profile
+    assert "Project work" in profile
 
 
-def test_loads_every_markdown_file(docs):
-    content = ProfileLoader(docs).load_and_format_markdown()
-    assert "Resume body" in content
-    assert "Projects body" in content
+def test_uploaded_pdf_is_converted_to_markdown(tmp_path, monkeypatch):
+    import sys
+    from types import SimpleNamespace
+
+    pdf = tmp_path / "resume.pdf"
+    pdf.write_bytes(b"fake pdf")
+
+    class FakeConverter:
+        def convert(self, path):
+            assert path == str(pdf)
+            return SimpleNamespace(markdown="# Converted resume")
+
+    monkeypatch.setitem(
+        sys.modules, "markitdown", SimpleNamespace(MarkItDown=FakeConverter)
+    )
+
+    assert "# Converted resume" in convert_uploaded_documents([str(pdf)])
 
 
-def test_ignores_non_markdown_files(docs):
-    assert "not markdown" not in ProfileLoader(docs).load_and_format_markdown()
+def test_uploaded_unsupported_file_type_is_rejected(tmp_path):
+    unsupported = tmp_path / "profile.exe"
+    unsupported.write_text("not a document", encoding="utf-8")
 
-
-def test_documents_are_labelled_with_their_source(docs):
-    content = ProfileLoader(docs).load_and_format_markdown()
-    assert "# Source: resume" in content
-    assert "# Source: projects" in content
-
-
-def test_order_is_sorted_and_therefore_reproducible(docs):
-    """Unsorted glob order made identical questions produce different answers."""
-    content = ProfileLoader(docs).load_and_format_markdown()
-    assert content.index("# Source: projects") < content.index("# Source: resume")
-    assert content == ProfileLoader(docs).load_and_format_markdown()
-
-
-def test_empty_directory_raises(tmp_path):
-    with pytest.raises(FileNotFoundError, match="No .md documents"):
-        ProfileLoader(tmp_path).load_and_format_markdown()
-
-
-def test_missing_directory_raises(tmp_path):
-    with pytest.raises(FileNotFoundError):
-        ProfileLoader(tmp_path / "absent").load_and_format_markdown()
-
-
-def test_unicode_survives_the_round_trip(tmp_path):
-    (tmp_path / "doc.md").write_text("Café — naïve — 日本語", encoding="utf-8")
-    assert "Café — naïve — 日本語" in ProfileLoader(tmp_path).load_and_format_markdown()
+    with pytest.raises(ValueError, match="Unsupported file type"):
+        convert_uploaded_documents([str(unsupported)])

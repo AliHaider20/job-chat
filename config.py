@@ -23,7 +23,6 @@ DEFAULT_DRAFTING_TEMPERATURE = 0.4
 DEFAULT_MAX_TOKENS = 20000
 # Skill output (cover letters, reviews, ATS reports) gets its own response cap.
 DEFAULT_SKILL_MAX_TOKENS = 6500
-DEFAULT_DATA_DIR = "data"
 DEFAULT_LANGFUSE_HOST = "https://cloud.langfuse.com"
 DEFAULT_CHECKPOINT_DB = "checkpoints.sqlite"
 # Turns of conversation replayed to the model. Older turns stay in the
@@ -42,7 +41,6 @@ class ConfigError(RuntimeError):
 class Settings:
     openrouter_api_key: str
     candidate_name: str
-    data_dir: Path
     model: str
     temperature: float
     drafting_temperature: float
@@ -82,36 +80,15 @@ def _get_int(name, default):
         raise ConfigError(f"{name} must be an integer, got {raw!r}")
 
 
-def _resolve_data_dir():
-    raw = os.getenv("DATA_DIR", "").strip() or DEFAULT_DATA_DIR
-    data_dir = Path(raw)
-    if not data_dir.is_absolute():
-        data_dir = PROJECT_ROOT / data_dir
-
-    if not data_dir.is_dir():
-        raise ConfigError(
-            f"DATA_DIR does not exist: {data_dir}\n"
-            f"Set DATA_DIR in .env to the folder holding your profile documents, "
-            f"or remove it to use the default ({PROJECT_ROOT / DEFAULT_DATA_DIR})."
-        )
-    if not any(data_dir.glob("*.md")):
-        raise ConfigError(
-            f"No .md documents found in {data_dir}\n"
-            f"Run pdf_2_markdown_converter.py to convert your PDFs first."
-        )
-    return data_dir
-
-
-@lru_cache(maxsize=1)
-def get_settings() -> Settings:
+@lru_cache(maxsize=2)
+def get_settings(require_api_key=True) -> Settings:
     api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
-    if not api_key:
+    if require_api_key and not api_key:
         raise ConfigError("OPENROUTER_API_KEY is not set. Add it to your .env file.")
 
     return Settings(
         openrouter_api_key=api_key,
         candidate_name=os.getenv("CANDIDATE_NAME", "").strip() or "the candidate",
-        data_dir=_resolve_data_dir(),
         model=os.getenv("OPENROUTER_MODEL", "").strip() or DEFAULT_MODEL,
         temperature=_get_float("LLM_TEMPERATURE", DEFAULT_TEMPERATURE),
         drafting_temperature=_get_float("LLM_DRAFTING_TEMPERATURE", DEFAULT_DRAFTING_TEMPERATURE),

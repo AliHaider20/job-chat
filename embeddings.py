@@ -14,7 +14,7 @@ from config import get_settings
 def _model():
     from fastembed import TextEmbedding
 
-    return TextEmbedding(get_settings().embedding_model)
+    return TextEmbedding(get_settings(require_api_key=False).embedding_model)
 
 
 def embed(texts) -> np.ndarray:

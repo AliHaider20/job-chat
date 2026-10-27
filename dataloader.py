@@ -1,23 +1,44 @@
 from pathlib import Path
 
 SEPARATOR = "\n\n" + "-" * 60 + "\n\n"
+SUPPORTED_UPLOAD_EXTENSIONS = {".pdf", ".docx", ".md", ".txt"}
 
 
-class ProfileLoader:
-    """Loads the candidate's markdown profile documents into a single context string."""
+def format_documents(documents):
+    """Combine named Markdown strings into the profile context."""
+    sections = [
+        f"# Source: {Path(name).stem}\n\n{content.strip()}"
+        for name, content in documents
+        if content and content.strip()
+    ]
+    if not sections:
+        raise ValueError("The uploaded documents contain no readable text.")
+    return SEPARATOR.join(sections)
 
-    def __init__(self, data_dir):
-        self.data_dir = Path(data_dir)
 
-    def load_and_format_markdown(self):
-        # Sorted so document order — and therefore model output — is reproducible.
-        md_files = sorted(self.data_dir.glob("*.md"))
-        if not md_files:
-            raise FileNotFoundError(f"No .md documents found in {self.data_dir}")
+def convert_uploaded_documents(files):
+    """Convert supported uploaded files to one Markdown profile in memory."""
+    documents = []
+    converter = None
 
-        sections = []
-        for md_file in md_files:
-            content = md_file.read_text(encoding="utf-8").strip()
-            sections.append(f"# Source: {md_file.stem}\n\n{content}")
+    for file_path in files or []:
+        path = Path(file_path)
+        extension = path.suffix.lower()
+        if extension not in SUPPORTED_UPLOAD_EXTENSIONS:
+            supported = ", ".join(sorted(SUPPORTED_UPLOAD_EXTENSIONS))
+            raise ValueError(
+                f"Unsupported file type '{extension or '(none)'}' for {path.name}. "
+                f"Upload files with these extensions: {supported}."
+            )
 
-        return SEPARATOR.join(sections)
+        if extension in {".md", ".txt"}:
+            content = path.read_text(encoding="utf-8-sig")
+        else:
+            if converter is None:
+                from markitdown import MarkItDown
+
+                converter = MarkItDown()
+            content = converter.convert(str(path)).markdown
+        documents.append((path.name, content))
+
+    return format_documents(documents)

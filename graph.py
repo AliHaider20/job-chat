@@ -19,8 +19,7 @@ from langgraph.graph.message import add_messages
 
 import router as router_module
 from ats import ATSAnalysis, format_ats_report
-from config import OPENROUTER_BASE_URL, get_settings
-from dataloader import ProfileLoader
+from config import ConfigError, OPENROUTER_BASE_URL, get_settings
 from embeddings import embed
 from prompts import (
     NO_JD_PLACEHOLDER,
@@ -96,10 +95,13 @@ def route_action(state, semantic_router=None) -> str:
     return NODE_BY_ROUTE[semantic_router.route(query)]
 
 
-def build_llm(temperature=None, max_tokens=None):
-    settings = get_settings()
+def build_llm(temperature=None, max_tokens=None, api_key=None):
+    settings = get_settings(require_api_key=False)
+    api_key = api_key or settings.openrouter_api_key
+    if not api_key:
+        raise ConfigError("An OpenRouter API key is required to build the model.")
     return ChatOpenAI(
-        api_key=settings.openrouter_api_key,
+        api_key=api_key,
         base_url=OPENROUTER_BASE_URL,
         model=settings.model,
         temperature=settings.temperature if temperature is None else temperature,
@@ -107,24 +109,31 @@ def build_llm(temperature=None, max_tokens=None):
     )
 
 
-def build_graph():
-    settings = get_settings()
-    profile_data = ProfileLoader(settings.data_dir).load_and_format_markdown()
+def build_graph(api_key=None, profile_data=None):
+    settings = get_settings(require_api_key=False)
+    api_key = api_key or settings.openrouter_api_key
+    if not api_key:
+        raise ConfigError("An OpenRouter API key is required to build the graph.")
+    if not profile_data or not profile_data.strip():
+        raise ConfigError("Upload profile documents before building the graph.")
     prompt = build_qa_prompt()
-    llm = build_llm()
+    llm = build_llm(api_key=api_key)
     chain = prompt | llm
     skill_prompt = build_skill_prompt()
     skill_chains = {
         key: skill_prompt | build_llm(
             settings.drafting_temperature if key in DRAFTING_SKILLS else None,
             settings.skill_max_tokens,
+            api_key=api_key,
         )
         for key in SKILLS
         if key != "ats"
     }
     rag_chain = build_rag_prompt() | llm
     trivial_chain = build_trivial_prompt() | llm
-    structured_llm = build_llm(max_tokens=settings.skill_max_tokens).with_structured_output(ATSAnalysis)
+    structured_llm = build_llm(
+        max_tokens=settings.skill_max_tokens, api_key=api_key
+    ).with_structured_output(ATSAnalysis)
 
     index = ProfileIndex(chunk_documents(profile_data), embed)
     semantic_router = SemanticRouter(embed)

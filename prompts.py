@@ -39,7 +39,7 @@ RAG_SYSTEM_PROMPT = """You are {candidate_name}'s assistant. Answer the user's n
 def render_system_prompt(context_text, job_description) -> str:
     """The system prompt as plain text, for paths that bypass the chat template."""
     return QA_SYSTEM_PROMPT.format(
-        candidate_name=get_settings().candidate_name,
+        candidate_name=get_settings(require_api_key=False).candidate_name,
         context_text=context_text,
         job_description=job_description or NO_JD_PLACEHOLDER,
     )
@@ -50,7 +50,7 @@ def _chat_prompt(system_text) -> ChatPromptTemplate:
         ("system", system_text),
         MessagesPlaceholder("history"),
         ("user", "{user_query}"),
-    ]).partial(candidate_name=get_settings().candidate_name)
+    ]).partial(candidate_name=get_settings(require_api_key=False).candidate_name)
 
 
 def build_qa_prompt() -> ChatPromptTemplate:
@@ -98,7 +98,7 @@ SKILL_SYSTEM_PROMPT = """You are the interview-preparation assistant for {candid
 def render_skill_prompt(skill_text, context_text, job_description) -> str:
     """The skill system prompt as plain text, for paths that bypass the chat template."""
     return SKILL_SYSTEM_PROMPT.format(
-        candidate_name=get_settings().candidate_name,
+        candidate_name=get_settings(require_api_key=False).candidate_name,
         skill_text=skill_text,
         context_text=context_text,
         job_description=job_description or NO_JD_PLACEHOLDER,
