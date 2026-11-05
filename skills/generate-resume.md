@@ -32,7 +32,7 @@ documents, leave it out: never add it to Skills "to match".
 ## Strict output rules
 
 1. Output ONLY the resume. No preamble, no explanation, no closing note, no code fences.
-2. No markdown bold (`**`), italics, code spans or tables anywhere.
+2. No italics, code spans or tables. The ONLY allowed inline markup is `**bold**`, as described under "Bold emphasis".
 3. No first-person pronouns (I, me, my).
 4. No placeholders such as [ADD METRIC]. If a number is not in the documents, write the bullet without one.
 5. Follow the exact structure below; the formatter parses it line by line.
@@ -92,7 +92,15 @@ Details:
   Keep the name's wording; no blank line between name and contact line.
 - Skills: exactly three labelled lines taken from the candidate's own skills
   (e.g. ML & GenAI / Languages & Frameworks / MLOps, Cloud & Data).
-- Awards: one line per item, trailing " | Month Year" is not required.
+- Awards: one line per item; add " | Month Year" at the end when a date is known (shown flush right).
+
+## Bold emphasis
+
+In Experience, Volunteer and Project bullets, wrap the single most important
+metric or technology phrase of a bullet in `**double asterisks**` (for example
+`cutting per-query inference cost **30% at production scale**`). At most one
+span per bullet, only where there is a real number or key technology. Never
+bold anything else.
 
 ## Grounding rules
 

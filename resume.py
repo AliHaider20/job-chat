@@ -76,7 +76,7 @@ def _clean_markdown(raw_text: str) -> str:
     lines = text.splitlines()
     first_h1 = next((i for i, l in enumerate(lines) if l.strip().startswith("# ")), 0)
     text = "\n".join(lines[first_h1:])
-    return text.replace("**", "").replace("`", "")
+    return text.replace("`", "")
 
 
 # ── Job-description alignment checks ─────────────────────────────────────────
@@ -305,7 +305,12 @@ def _add_hyperlink(para, text: str, url: str, size: Pt) -> None:
 
 
 def _run(para, text: str, *, size: Pt, bold=False, italic=False) -> None:
-    """Add text, turning [label](url), bare URLs and emails into real hyperlinks."""
+    """Add text; **bold** spans are bolded, links/URLs/emails become real hyperlinks."""
+    if "**" in text:
+        for i, part in enumerate(text.split("**")):
+            if part:
+                _run(para, part, size=size, bold=bold or i % 2 == 1, italic=italic)
+        return
     pos = 0
     for m in _INLINE.finditer(text):
         if m.start() > pos:
@@ -364,7 +369,8 @@ def _add_section_heading(doc: Document, text: str) -> None:
     p._p.get_or_add_pPr().append(pBdr)
 
 
-def _add_row(doc: Document, text: str, *, bold: bool, italic: bool = False) -> None:
+def _add_row(doc: Document, text: str, *, bold: bool, italic: bool = False,
+             experience: bool = False, right_italic: bool = False) -> None:
     """`left | right` → left text with the right part flush to the right margin."""
     left, sep, right = text.strip().rpartition(" | ")
     if not sep:
@@ -372,17 +378,32 @@ def _add_row(doc: Document, text: str, *, bold: bool, italic: bool = False) -> N
     p = _para(doc, before=1.5 if bold else 0)
     p.paragraph_format.keep_with_next = True
     p.paragraph_format.tab_stops.add_tab_stop(_TEXT_WIDTH, WD_TAB_ALIGNMENT.RIGHT)
+    company, dash, rest = left.partition(" - ")
+    if experience and dash and "|" not in left:
+        # Template style: italic company, bold title, italic city.
+        title, comma, city = rest.partition(", ")
+        _run(p, company + " - ", size=Pt(10), bold=True, italic=True)
+        _run(p, title + comma, size=Pt(10), bold=True)
+        _run(p, city, size=Pt(10), bold=True, italic=True)
+        _run(p, "\t" + right, size=Pt(10))
+        return
     _run(p, left, size=Pt(10), bold=bold, italic=italic)
     if right:
-        _run(p, "\t" + right, size=Pt(10), italic=italic)
+        # University rows carry an italic location; degree rows keep a plain date.
+        _run(p, "\t" + right, size=Pt(10), italic=right_italic)
 
 
-def _add_bullet(doc: Document, text: str) -> None:
+def _add_bullet(doc: Document, text: str, dated: bool = False) -> None:
     p = _para(doc)
     pf = p.paragraph_format
     pf.left_indent, pf.first_line_indent = _BULLET_INDENT, -_BULLET_HANG
     pf.tab_stops.add_tab_stop(_BULLET_INDENT)
-    _run(p, "•\t" + text.strip(), size=Pt(10))
+    left, sep, right = text.strip().rpartition(" | ")
+    if dated and sep:  # Awards: date flush right
+        pf.tab_stops.add_tab_stop(_TEXT_WIDTH, WD_TAB_ALIGNMENT.RIGHT)
+        _run(p, "•\t" + left + "\t" + right, size=Pt(10))
+    else:
+        _run(p, "•\t" + text.strip(), size=Pt(10))
 
 
 def _add_body(doc: Document, text: str) -> None:
@@ -425,6 +446,7 @@ def _build_docx(markdown_text: str) -> bytes:
     found_name = False
     expect_contact = False  # True immediately after the H1 name line
     in_skills = False
+    section = ""
 
     # Models sometimes drop the "# " on the name; treat a plain first line as the name.
     first = next((l.strip() for l in markdown_text.splitlines() if l.strip()), "")
@@ -452,14 +474,19 @@ def _build_docx(markdown_text: str) -> bytes:
         expect_contact = False
 
         if stripped.startswith("## "):
-            in_skills = "skill" in stripped.lower()
+            section = stripped.lower()
+            in_skills = "skill" in section
             _add_section_heading(doc, stripped[3:])
         elif stripped.startswith("#### "):
             _add_row(doc, stripped[5:], bold=False, italic=True)
         elif stripped.startswith("### "):
-            _add_row(doc, stripped[4:], bold=True)
+            _add_row(doc, stripped[4:], bold=True, right_italic="education" in section,
+                     experience="experience" in section and "volunteer" not in section)
         elif stripped.startswith(("- ", "* ")):
-            (_add_body if in_skills else _add_bullet)(doc, stripped[2:])
+            if in_skills:
+                _add_body(doc, stripped[2:])
+            else:
+                _add_bullet(doc, stripped[2:], dated="award" in section)
         else:
             _add_body(doc, stripped)
 

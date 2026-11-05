@@ -489,3 +489,29 @@ def test_generic_phrases_are_not_flagged_as_invented():
     from resume import keyword_report
     rep = keyword_report("Multi-agent systems, open-source models, AutoGen", "Python", "multi-agent open-source AutoGen")
     assert rep["invented"] == ["AutoGen"]
+
+
+# ── ODT-parity details ────────────────────────────────────────────────────────
+
+def _md(*lines):
+    return "\n".join(lines)
+
+
+def test_bold_span_in_bullet_is_bold_only_for_span():
+    doc = _doc(_build_docx(_md("# A B", "x@y.com", "## Experience", "### Co - Eng, NY | 2020",
+                               "- Cut cost **30%** overall")))
+    bullet = next(p for p in doc.paragraphs if p.text.startswith("•"))
+    assert [(r.text, bool(r.font.bold)) for r in bullet.runs if r.text.strip()] == [
+        ("•\tCut cost ", False), ("30%", True), (" overall", False)]
+
+
+def test_experience_row_styles_company_title_city():
+    doc = _doc(_build_docx(_md("# A B", "x@y.com", "## Experience", "### Credo - ML Engineer, Austin, TX | 2020")))
+    row = next(p for p in doc.paragraphs if "Credo" in p.text)
+    assert row.runs[0].font.italic and not row.runs[1].font.italic and row.runs[2].font.italic
+
+
+def test_award_date_flush_right():
+    doc = _doc(_build_docx(_md("# A B", "x@y.com", "## Awards & Honors", "- Best paper | May 2024")))
+    p = next(p for p in doc.paragraphs if "Best paper" in p.text)
+    assert p.text.endswith("\tMay 2024")
