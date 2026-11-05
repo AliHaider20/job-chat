@@ -95,7 +95,7 @@ def route_action(state, semantic_router=None) -> str:
     return NODE_BY_ROUTE[semantic_router.route(query)]
 
 
-def build_llm(temperature=None, max_tokens=None, api_key=None):
+def build_llm(temperature=None, max_tokens=None, api_key=None, model=None):
     settings = get_settings(require_api_key=False)
     api_key = api_key or settings.openrouter_api_key
     if not api_key:
@@ -103,7 +103,7 @@ def build_llm(temperature=None, max_tokens=None, api_key=None):
     return ChatOpenAI(
         api_key=api_key,
         base_url=OPENROUTER_BASE_URL,
-        model=settings.model,
+        model=model or settings.model,
         temperature=settings.temperature if temperature is None else temperature,
         max_tokens=settings.max_tokens if max_tokens is None else max_tokens,
     )

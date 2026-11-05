@@ -10,8 +10,9 @@ from openai import LengthFinishReasonError
 
 from config import ConfigError, get_settings
 from dataloader import convert_uploaded_documents
-from graph import ATS_NODE, build_graph
+from graph import ATS_NODE, build_graph, build_llm
 from observability import build_run_config, flush
+from resume import RESUME_MODEL, generate_resume_docx
 from skills import ACTIONS
 import spaces
 
@@ -152,6 +153,34 @@ def run_action(key, chat_history, job_description, thread_id, session_id):
     )
 
 
+def generate_resume_handler(session_id, job_description):
+    """Generate an ATS-friendly .docx resume and return it as a downloadable file."""
+    import tempfile
+
+    session = SESSION_DATA.get(session_id) or {}
+    profile_data = session.get("profile_data")
+    api_key = session.get("api_key") or SETTINGS.openrouter_api_key
+
+    if not profile_data:
+        return gr.update(visible=False), "Upload profile documents first."
+    if not (job_description or "").strip():
+        return gr.update(visible=False), "Paste a job description before generating a resume."
+    if not api_key:
+        return gr.update(visible=False), "Connect an OpenRouter API key first."
+
+    try:
+        llm = build_llm(api_key=api_key, model=RESUME_MODEL, max_tokens=8000)
+        docx_bytes = generate_resume_docx(profile_data, job_description, llm)
+        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
+            tmp.write(docx_bytes)
+            tmp_path = tmp.name
+        return gr.update(value=tmp_path, visible=True), "Resume ready — click the file to download."
+    except Exception as exc:
+        logger.exception("Resume generation failed")
+        detail = request_error_detail(exc)
+        return gr.update(visible=False), f"**Resume generation failed.** {detail}"
+
+
 def stream_response(
     chat_history, job_description, thread_id, session_id=None, model_query=None, action=""
 ):
@@ -272,6 +301,8 @@ with gr.Blocks(title="job-chat", fill_height=True, analytics_enabled=False) as d
                     key: gr.Button(label, size="sm")
                     for key, (label, _) in ACTIONS.items()
                 }
+            with gr.Row():
+                generate_resume_btn = gr.Button("Generate Resume (.docx)", size="sm", variant="secondary")
 
             chatbot = gr.Chatbot(height=520, show_label=False, resizable=True)
             with gr.Row():
@@ -283,6 +314,8 @@ with gr.Blocks(title="job-chat", fill_height=True, analytics_enabled=False) as d
                 )
                 stop_btn = gr.Button("Stop", variant="stop", scale=1)
             clear_chat_btn = gr.Button("Reset conversation")
+            resume_status = gr.Markdown("")
+            resume_file = gr.File(label="Download resume", visible=False, interactive=False)
 
     jd_box.change(jd_status, inputs=jd_box, outputs=jd_state)
     clear_jd_btn.click(lambda: "", outputs=jd_box)
@@ -331,6 +364,12 @@ with gr.Blocks(title="job-chat", fill_height=True, analytics_enabled=False) as d
         ))
 
     stop_btn.click(fn=None, cancels=generation_events, queue=False)
+
+    generate_resume_btn.click(
+        generate_resume_handler,
+        inputs=[session_id, jd_box],
+        outputs=[resume_file, resume_status],
+    )
 
 
 if __name__ == "__main__":
