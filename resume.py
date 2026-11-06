@@ -13,6 +13,7 @@ description and asks the model to repair it when it falls short:
 
 import logging
 import math
+import os
 import re
 import shutil
 import subprocess
@@ -35,7 +36,8 @@ logger = logging.getLogger(__name__)
 
 # Free model with 131K context — handles the full profile+JD prompt reliably.
 # The default openrouter/free model silently returns empty content for large prompts.
-RESUME_MODEL = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+# Override with the RESUME_MODEL env var (a non-reasoning model is faster and never returns empty).
+RESUME_MODEL = os.getenv("RESUME_MODEL", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free")
 
 MAX_ATTEMPTS = 3
 COVERAGE_TARGET = 0.9
@@ -246,14 +248,16 @@ def generate_resume_docx(profile_data: str, job_description: str, llm) -> bytes:
     best: tuple[int, bytes] | None = None
     for attempt in range(1, MAX_ATTEMPTS + 1):
         t_llm = time.monotonic()
-        raw_text = _response_text(llm.invoke(messages, config=config))
+        response = llm.invoke(messages, config=config)
+        raw_text = _response_text(response)
         logger.info("[resume %d/%d] LLM responded — %.1fs, %d chars (model=%s)",
                     attempt, MAX_ATTEMPTS, time.monotonic() - t_llm, len(raw_text), RESUME_MODEL)
 
         markdown_text = _clean_markdown(raw_text)
         if not markdown_text.strip():
             if attempt < MAX_ATTEMPTS:
-                logger.warning("[resume %d/%d] empty response; retrying", attempt, MAX_ATTEMPTS)
+                logger.warning("[resume %d/%d] empty response (metadata=%s); retrying", attempt, MAX_ATTEMPTS,
+                               getattr(response, "response_metadata", None))
                 continue
             raise ValueError(
                 "The model returned an empty response. "

@@ -217,7 +217,7 @@ def build_graph(api_key=None, profile_data=None):
         ])
         return {"messages": [AIMessage(content=format_ats_report(analysis))]}
 
-    resume_llm = build_llm(api_key=api_key, model=RESUME_MODEL, max_tokens=8000)
+    resume_llm = build_llm(api_key=api_key, model=RESUME_MODEL)
 
     def resume_generation(state: ChatState):
         """Draft, check and render a one-page .docx resume for the loaded job description."""
