@@ -10,10 +10,9 @@ from openai import LengthFinishReasonError
 
 from config import ConfigError, get_settings
 from dataloader import convert_uploaded_documents
-from graph import ATS_NODE, build_graph, build_llm
+from graph import ATS_NODE, RESUME_NODE, build_graph
 from observability import build_run_config, flush
-from resume import RESUME_MODEL, generate_resume_docx
-from skills import ACTIONS
+from skills import ACTIONS, RESUME_INSTRUCTION, RESUME_LABEL
 import spaces
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -142,7 +141,7 @@ def show_action_label(label, chat_history):
 
 
 def run_action(key, chat_history, job_description, thread_id, session_id):
-    _, instruction = ACTIONS[key]
+    _, instruction = ACTIONS.get(key, (RESUME_LABEL, RESUME_INSTRUCTION))
     yield from stream_response(
         chat_history,
         job_description,
@@ -151,34 +150,6 @@ def run_action(key, chat_history, job_description, thread_id, session_id):
         action=key,
         session_id=session_id,
     )
-
-
-def generate_resume_handler(session_id, job_description):
-    """Generate an ATS-friendly .docx resume and return it as a downloadable file."""
-    import tempfile
-
-    session = SESSION_DATA.get(session_id) or {}
-    profile_data = session.get("profile_data")
-    api_key = session.get("api_key") or SETTINGS.openrouter_api_key
-
-    if not profile_data:
-        return gr.update(visible=False), "Upload profile documents first."
-    if not (job_description or "").strip():
-        return gr.update(visible=False), "Paste a job description before generating a resume."
-    if not api_key:
-        return gr.update(visible=False), "Connect an OpenRouter API key first."
-
-    try:
-        llm = build_llm(api_key=api_key, model=RESUME_MODEL, max_tokens=8000)
-        docx_bytes = generate_resume_docx(profile_data, job_description, llm)
-        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
-            tmp.write(docx_bytes)
-            tmp_path = tmp.name
-        return gr.update(value=tmp_path, visible=True), "Resume ready — click the file to download."
-    except Exception as exc:
-        logger.exception("Resume generation failed")
-        detail = request_error_detail(exc)
-        return gr.update(visible=False), f"**Resume generation failed.** {detail}"
 
 
 def stream_response(
@@ -223,8 +194,11 @@ def stream_response(
 
     chat_history = chat_history + [{"role": "assistant", "content": ""}]
     try:
-        if action == "ats":
-            chat_history[-1]["content"] = "_Extracting and scoring keywords…_"
+        if action in ("ats", "resume"):
+            chat_history[-1]["content"] = (
+                "_Extracting and scoring keywords…_" if action == "ats"
+                else "_Drafting and checking your resume (this can take a few minutes)…_"
+            )
             yield chat_history
 
         streamed = False
@@ -232,7 +206,7 @@ def stream_response(
             if mode == "messages":
                 message, meta = chunk
                 # The ATS node's model call emits structured-output fragments, not prose.
-                if meta.get("langgraph_node") == ATS_NODE:
+                if meta.get("langgraph_node") in (ATS_NODE, RESUME_NODE):
                     continue
                 if isinstance(message, AIMessage) and message.content:
                     if not streamed:
@@ -244,6 +218,12 @@ def stream_response(
                 ats_update = chunk.get(ATS_NODE)
                 if ats_update and ats_update.get("messages"):
                     chat_history[-1]["content"] = str(ats_update["messages"][-1].text)
+                    yield chat_history
+                resume_update = chunk.get(RESUME_NODE)
+                if resume_update and resume_update.get("messages"):
+                    chat_history[-1]["content"] = str(resume_update["messages"][-1].text)
+                    if resume_update.get("resume_file"):
+                        chat_history.append({"role": "assistant", "content": {"path": resume_update["resume_file"]}})
                     yield chat_history
     except Exception as exc:
         logger.exception("Request failed")
@@ -302,7 +282,7 @@ with gr.Blocks(title="job-chat", fill_height=True, analytics_enabled=False) as d
                     for key, (label, _) in ACTIONS.items()
                 }
             with gr.Row():
-                generate_resume_btn = gr.Button("Generate Resume (.docx)", size="sm", variant="secondary")
+                generate_resume_btn = gr.Button(RESUME_LABEL, size="sm", variant="secondary")
 
             chatbot = gr.Chatbot(height=520, show_label=False, resizable=True)
             with gr.Row():
@@ -314,8 +294,6 @@ with gr.Blocks(title="job-chat", fill_height=True, analytics_enabled=False) as d
                 )
                 stop_btn = gr.Button("Stop", variant="stop", scale=1)
             clear_chat_btn = gr.Button("Reset conversation")
-            resume_status = gr.Markdown("")
-            resume_file = gr.File(label="Download resume", visible=False, interactive=False)
 
     jd_box.change(jd_status, inputs=jd_box, outputs=jd_state)
     clear_jd_btn.click(lambda: "", outputs=jd_box)
@@ -363,14 +341,18 @@ with gr.Blocks(title="job-chat", fill_height=True, analytics_enabled=False) as d
             outputs=chatbot,
         ))
 
+    generation_events.append(generate_resume_btn.click(
+        partial(show_action_label, RESUME_LABEL),
+        inputs=chatbot,
+        outputs=chatbot,
+        queue=False,
+    ).then(
+        partial(run_action, "resume"),
+        inputs=[chatbot, jd_box, thread_id, session_id],
+        outputs=chatbot,
+    ))
+
     stop_btn.click(fn=None, cancels=generation_events, queue=False)
-
-    generate_resume_btn.click(
-        generate_resume_handler,
-        inputs=[session_id, jd_box],
-        outputs=[resume_file, resume_status],
-    )
-
 
 if __name__ == "__main__":
     logger.info("Model: %s | tracing: %s", SETTINGS.model, SETTINGS.tracing_enabled)

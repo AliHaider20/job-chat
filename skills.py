@@ -43,6 +43,11 @@ SKILLS = {
     ),
 }
 
+# The resume generator is not a prose skill (it builds a .docx, see resume.py), so it is
+# kept out of SKILLS but shares the button/instruction shape.
+RESUME_LABEL = "Generate resume (.docx)"
+RESUME_INSTRUCTION = "Generate my tailored one-page resume for the loaded job description."
+
 # Skills that write prose rather than analyse, and so use a higher temperature.
 DRAFTING_SKILLS = {"cover_letter", "email"}
 
