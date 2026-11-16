@@ -20,3 +20,5 @@ pypdfium2==5.14.0
 # TLS inspection (corporate proxy / antivirus); harmless elsewhere.
 pip-system-certs==5.3
 spaces>=0.51
+gradio>=6.32.0
+pytest>=9.1.1
