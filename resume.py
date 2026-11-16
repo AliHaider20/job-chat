@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 # Free model with 131K context — handles the full profile+JD prompt reliably.
 # The default openrouter/free model silently returns empty content for large prompts.
 # Override with the RESUME_MODEL env var (a non-reasoning model is faster and never returns empty).
-RESUME_MODEL = os.getenv("RESUME_MODEL", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free")
+RESUME_MODEL = os.getenv("RESUME_MODEL", "nvidia/nemotron-3.5-lightning:free")
 
 MAX_ATTEMPTS = 3
 COVERAGE_TARGET = 0.9

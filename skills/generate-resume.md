@@ -13,36 +13,82 @@ surface at least 90% of those the candidate documents honestly support, using
 the job description's own wording where the candidate has the skill (for
 example write "Model Context Protocol (MCP)" or "Retrieval-Augmented
 Generation (RAG)" if that is how the job description says it).
-Place them in the Skills lines, and inside experience/project bullets where the
-work really involved them. If a keyword has no support in the candidate
-documents, leave it out: never add it to Skills "to match".
+Place them in the Skills lines AND reword experience/project bullets to use the
+JD's exact terminology where the work honestly involved those technologies.
+If a keyword has no support in the candidate documents, leave it out.
 
 ## Tailoring rules (what makes it job-aligned, not just keyword-stuffed)
 
 - Order the Skills lines, and the items inside each line, so the terms the job
   description asks for come first. Rename the three category labels if a
   better-fitting label is supported (e.g. "Agentic AI & GenAI").
-- Within each role, put the bullets most relevant to the job description first,
-  and reword them to emphasise the matching technologies and outcomes.
-- Keep every role, but trim the least relevant bullets to fit one page.
-  Choose which Volunteer and Project entries to keep by relevance to the job.
+- Reword experience bullets to use the JD's own language and emphasise the
+  matching technologies — do not change the facts, only the framing.
+- Within each role, put the bullets most relevant to the job description first.
 - Reuse the real numbers from the documents (percentages, accuracy, counts).
   Never invent a number.
+
+## EXACT PAGE LAYOUT — match this structure precisely
+
+The resume must fill exactly one US Letter page (0.44 in side margins, 10pt
+Times New Roman). Use the following section structure and bullet counts — no
+more, no less. This is derived from the validated reference layout.
+
+```
+Name + contact line                       — 2 lines
+
+SKILLS (heading)                          — 1 line
+  3 skill category lines (each may wrap)  — ~6 lines
+
+EXPERIENCE (heading)                      — 1 line
+  Role 1 header                           — 1 line
+  4 bullets                               — 4 lines
+  Role 2 header                           — 1 line
+  4 bullets                               — 4 lines
+
+VOLUNTEER EXPERIENCES & LEADERSHIP        — 1 line
+  Role 1 header + 2 bullets               — 3 lines
+  Role 2 header + 2 bullets               — 3 lines
+  Role 3 header + 2 bullets               — 3 lines
+
+PROJECTS (heading)                        — 1 line
+  Project 1 header + 2 bullets            — 3 lines
+  Project 2 header + 2 bullets            — 3 lines
+  Project 3 header + 2 bullets            — 3 lines
+
+AWARDS & HONORS (heading)                 — 1 line
+  3 award / publication lines             — 3 lines
+
+EDUCATION (heading)                       — 1 line
+  University 1 name + degree line         — 2 lines
+  University 2 name + degree line         — 2 lines
+```
+
+Rules for staying on one page:
+- **Experience: exactly 4 bullets per role.** If a bullet is long, shorten it —
+  do not drop it.
+- **Volunteer: exactly 3 roles, 2 bullets each.** Use all three from the documents.
+- **Projects: exactly 3 projects, 2 bullets each.** Pick the 3 most JD-relevant.
+- **Skills: exactly 3 labelled category lines.** Each line may wrap to 2 rendered
+  lines; keep each category under 330 characters.
+- **Bullet line length: 115 characters maximum** including the leading "- ".
+  Split long bullets across two logical parts rather than one very long line.
+- Education: university name line + one degree/italic line each. No extra lines.
 
 ## Strict output rules
 
 1. Output ONLY the resume. No preamble, no explanation, no closing note, no code fences.
-2. No italics, code spans or tables. The ONLY allowed inline markup is `**bold**`, as described under "Bold emphasis".
+2. No italics, code spans or tables. The ONLY allowed inline markup is `**bold**`.
 3. No first-person pronouns (I, me, my).
-4. No placeholders such as [ADD METRIC]. If a number is not in the documents, write the bullet without one.
+4. No placeholders such as [ADD METRIC]. If a number is not in the documents, omit it.
 5. Follow the exact structure below; the formatter parses it line by line.
 6. The result MUST fit on one US Letter page (0.44in side margins, 10pt Times New Roman).
 
 ## Line length
 
 - Full-width lines: 120 characters maximum.
-- Bullets: 115 characters maximum including the leading "- ". Split or shorten longer ones.
-- Skills lines may wrap to two rendered lines; keep each category under 330 characters.
+- Bullets: 115 characters maximum including the leading "- ".
+- Skills lines may wrap; keep each category under 330 characters.
 - Row lines (`### Left | Right`): keep Left + Right under 120 characters.
 
 ## Required output format
@@ -58,19 +104,24 @@ City, State | [Email](mailto:email) | Phone | [LinkedIn](url) | [GitHub](url)
 
 ## Experience
 ### Company - Job Title, City, State | Month Year – Month Year
-- Past-tense action verb, what was built, with technologies and a real metric.
+- Bullet 1
+- Bullet 2
+- Bullet 3
+- Bullet 4
 
 ## Volunteer Experiences & Leadership
 ### Organisation: Role | Remote | Month Year – Month Year
-- Bullet.
+- Bullet 1
+- Bullet 2
 
 ## Projects
 ### Project Name https://github.com/user/repo | Month Year
-- Bullet naming impact and key technologies.
+- Bullet 1
+- Bullet 2
 
 ## Awards & Honors
 - Award or publication title | Month Year
-- Award sentence.
+- Award sentence | Month Year
 
 ## Education
 ### University Name | City, Country
@@ -85,22 +136,22 @@ Details:
 - Section order is fixed: Skills, Experience, Volunteer Experiences & Leadership,
   Projects, Awards & Honors, Education. Omit a section only if the documents
   have nothing for it.
-- Experience roles in reverse-chronological order, 3-4 bullets each, every bullet
+- Experience roles in reverse-chronological order, 4 bullets each, every bullet
   starting with a strong past-tense verb (Built, Deployed, Reduced, Engineered...).
 - Contact line: keep exactly the details found in the documents, with the
   LinkedIn and GitHub URLs as `[LinkedIn](url)` / `[GitHub](url)` links.
   Keep the name's wording; no blank line between name and contact line.
-- Skills: exactly three labelled lines taken from the candidate's own skills
-  (e.g. ML & GenAI / Languages & Frameworks / MLOps, Cloud & Data).
-- Awards: one line per item; add " | Month Year" at the end when a date is known (shown flush right).
+- Skills: exactly three labelled lines (e.g. ML & GenAI / Languages & Frameworks /
+  MLOps, Cloud & Data). Include every tool from the candidate's documents that is
+  relevant to the JD. Add JD-matched terms first within each line.
+- Awards: one line per item; add " | Month Year" at the end when a date is known.
 
 ## Bold emphasis
 
 In Experience, Volunteer and Project bullets, wrap the single most important
-metric or technology phrase of a bullet in `**double asterisks**` (for example
+metric or technology phrase in `**double asterisks**` (e.g.
 `cutting per-query inference cost **30% at production scale**`). At most one
-span per bullet, only where there is a real number or key technology. Never
-bold anything else.
+span per bullet, only where there is a real number or key technology.
 
 ## Grounding rules
 
@@ -108,9 +159,9 @@ These override everything else:
 
 - The candidate documents are the only source of truth about the candidate.
   Never invent employers, titles, dates, metrics, technologies or outcomes.
-- The job description describes what the employer wants, not what the
-  candidate has. A requirement is never evidence of a skill the candidate has.
-  Requirements such as security clearance, citizenship or degrees the
-  candidate lacks are NOT mentioned.
+- The job description describes what the employer wants, not what the candidate
+  has. A requirement is never evidence of a skill the candidate has.
+- Do not remove any employer, project or volunteer role from the documents.
+  Reword bullets to match the JD's language; do not drop them.
 - If no job description is provided, produce the best general resume from the
   documents alone and skip the keyword step.

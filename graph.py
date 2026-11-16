@@ -217,7 +217,9 @@ def build_graph(api_key=None, profile_data=None):
         ])
         return {"messages": [AIMessage(content=format_ats_report(analysis))]}
 
-    resume_llm = build_llm(api_key=api_key, model=RESUME_MODEL)
+    # Cap at 4096 — a one-page resume never needs more, and reasoning models
+    # on the free tier silently burn 20k tokens on CoT with nothing left for output.
+    resume_llm = build_llm(api_key=api_key, model=RESUME_MODEL, max_tokens=75000)
 
     def resume_generation(state: ChatState):
         """Draft, check and render a one-page .docx resume for the loaded job description."""
