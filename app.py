@@ -10,9 +10,9 @@ from openai import LengthFinishReasonError
 
 from config import ConfigError, get_settings
 from dataloader import convert_uploaded_documents
-from graph import ATS_NODE, build_graph
+from graph import ATS_NODE, RESUME_NODE, build_graph
 from observability import build_run_config, flush
-from skills import ACTIONS
+from skills import ACTIONS, RESUME_INSTRUCTION, RESUME_LABEL
 import spaces
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -141,7 +141,7 @@ def show_action_label(label, chat_history):
 
 
 def run_action(key, chat_history, job_description, thread_id, session_id):
-    _, instruction = ACTIONS[key]
+    _, instruction = ACTIONS.get(key, (RESUME_LABEL, RESUME_INSTRUCTION))
     yield from stream_response(
         chat_history,
         job_description,
@@ -194,8 +194,11 @@ def stream_response(
 
     chat_history = chat_history + [{"role": "assistant", "content": ""}]
     try:
-        if action == "ats":
-            chat_history[-1]["content"] = "_Extracting and scoring keywords…_"
+        if action in ("ats", "resume"):
+            chat_history[-1]["content"] = (
+                "_Extracting and scoring keywords…_" if action == "ats"
+                else "_Drafting and checking your resume (this can take a few minutes)…_"
+            )
             yield chat_history
 
         streamed = False
@@ -203,7 +206,7 @@ def stream_response(
             if mode == "messages":
                 message, meta = chunk
                 # The ATS node's model call emits structured-output fragments, not prose.
-                if meta.get("langgraph_node") == ATS_NODE:
+                if meta.get("langgraph_node") in (ATS_NODE, RESUME_NODE):
                     continue
                 if isinstance(message, AIMessage) and message.content:
                     if not streamed:
@@ -215,6 +218,12 @@ def stream_response(
                 ats_update = chunk.get(ATS_NODE)
                 if ats_update and ats_update.get("messages"):
                     chat_history[-1]["content"] = str(ats_update["messages"][-1].text)
+                    yield chat_history
+                resume_update = chunk.get(RESUME_NODE)
+                if resume_update and resume_update.get("messages"):
+                    chat_history[-1]["content"] = str(resume_update["messages"][-1].text)
+                    if resume_update.get("resume_file"):
+                        chat_history.append({"role": "assistant", "content": {"path": resume_update["resume_file"]}})
                     yield chat_history
     except Exception as exc:
         logger.exception("Request failed")
@@ -272,6 +281,8 @@ with gr.Blocks(title="job-chat", fill_height=True, analytics_enabled=False) as d
                     key: gr.Button(label, size="sm")
                     for key, (label, _) in ACTIONS.items()
                 }
+            with gr.Row():
+                generate_resume_btn = gr.Button(RESUME_LABEL, size="sm", variant="secondary")
 
             chatbot = gr.Chatbot(height=520, show_label=False, resizable=True)
             with gr.Row():
@@ -330,8 +341,18 @@ with gr.Blocks(title="job-chat", fill_height=True, analytics_enabled=False) as d
             outputs=chatbot,
         ))
 
-    stop_btn.click(fn=None, cancels=generation_events, queue=False)
+    generation_events.append(generate_resume_btn.click(
+        partial(show_action_label, RESUME_LABEL),
+        inputs=chatbot,
+        outputs=chatbot,
+        queue=False,
+    ).then(
+        partial(run_action, "resume"),
+        inputs=[chatbot, jd_box, thread_id, session_id],
+        outputs=chatbot,
+    ))
 
+    stop_btn.click(fn=None, cancels=generation_events, queue=False)
 
 if __name__ == "__main__":
     logger.info("Model: %s | tracing: %s", SETTINGS.model, SETTINGS.tracing_enabled)

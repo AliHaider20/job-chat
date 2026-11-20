@@ -8,6 +8,7 @@ retrieved excerpts, or all of it.
 
 import logging
 import sqlite3
+import tempfile
 from functools import partial
 from typing import Annotated, TypedDict
 
@@ -29,6 +30,7 @@ from prompts import (
     build_trivial_prompt,
     render_skill_prompt,
 )
+from resume import RESUME_MODEL, generate_resume_docx
 from retrieval import ProfileIndex, chunk_documents
 from router import SemanticRouter
 from skills import DRAFTING_SKILLS, SKILLS, load_skill
@@ -42,9 +44,12 @@ class ChatState(TypedDict):
     job_description: str
     # A skill key from skills.SKILLS when a button was pressed; empty for free-form chat.
     action: str
+    # Path of the .docx written by the resume node; empty otherwise.
+    resume_file: str
 
 
 ATS_NODE = "ats_analysis"
+RESUME_NODE = "resume_generation"
 
 
 def skill_node(key: str) -> str:
@@ -56,6 +61,7 @@ NODE_BY_ROUTE = {
     router_module.TRIVIAL: "trivial_answer",
     router_module.SPECIFIC: "rag_answer",
     router_module.FULL: "answer",
+    router_module.RESUME: RESUME_NODE,
     **{key: skill_node(key) for key in SKILLS},
 }
 
@@ -80,6 +86,9 @@ def route_action(state, semantic_router=None) -> str:
     chat is routed.
     """
     action = state.get("action")
+    if action == router_module.RESUME:
+        logger.info("Route resume | button, router bypassed")
+        return RESUME_NODE
     if action in SKILLS:
         logger.info("Route %s | skill button, router bypassed", action)
         return skill_node(action)
@@ -95,7 +104,7 @@ def route_action(state, semantic_router=None) -> str:
     return NODE_BY_ROUTE[semantic_router.route(query)]
 
 
-def build_llm(temperature=None, max_tokens=None, api_key=None):
+def build_llm(temperature=None, max_tokens=None, api_key=None, model=None):
     settings = get_settings(require_api_key=False)
     api_key = api_key or settings.openrouter_api_key
     if not api_key:
@@ -103,7 +112,7 @@ def build_llm(temperature=None, max_tokens=None, api_key=None):
     return ChatOpenAI(
         api_key=api_key,
         base_url=OPENROUTER_BASE_URL,
-        model=settings.model,
+        model=model or settings.model,
         temperature=settings.temperature if temperature is None else temperature,
         max_tokens=settings.max_tokens if max_tokens is None else max_tokens,
     )
@@ -208,17 +217,34 @@ def build_graph(api_key=None, profile_data=None):
         ])
         return {"messages": [AIMessage(content=format_ats_report(analysis))]}
 
+    # Cap at 4096 — a one-page resume never needs more, and reasoning models
+    # on the free tier silently burn 20k tokens on CoT with nothing left for output.
+    resume_llm = build_llm(api_key=api_key, model=RESUME_MODEL, max_tokens=75000)
+
+    def resume_generation(state: ChatState):
+        """Draft, check and render a one-page .docx resume for the loaded job description."""
+        docx_bytes = generate_resume_docx(
+            profile_data, state.get("job_description") or "", resume_llm
+        )
+        with tempfile.NamedTemporaryFile(prefix="resume_", suffix=".docx", delete=False) as tmp:
+            tmp.write(docx_bytes)
+        return {
+            "messages": [AIMessage(content="Your tailored one-page resume is ready (.docx).")],
+            "resume_file": tmp.name,
+        }
+
     builder = StateGraph(ChatState)
     builder.add_node("answer", answer)
     builder.add_node("rag_answer", rag_answer)
     builder.add_node("trivial_answer", trivial_answer)
     builder.add_node(ATS_NODE, ats_analysis)
+    builder.add_node(RESUME_NODE, resume_generation)
     for key in skill_chains:
         builder.add_node(skill_node(key), make_skill_node(key))
     builder.add_conditional_edges(
         START,
         partial(route_action, semantic_router=semantic_router),
-        ["answer", "rag_answer", "trivial_answer", ATS_NODE, *map(skill_node, skill_chains)],
+        ["answer", "rag_answer", "trivial_answer", ATS_NODE, RESUME_NODE, *map(skill_node, skill_chains)],
     )
 
     # check_same_thread=False: Gradio serves requests from a pool of threads.

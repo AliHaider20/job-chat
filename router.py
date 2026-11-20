@@ -25,8 +25,10 @@ REVIEW = "review"
 ATS = "ats"
 COVER_LETTER = "cover_letter"
 EMAIL = "email"
+# Not a prose skill: generates a .docx resume (graph.RESUME_NODE).
+RESUME = "resume"
 
-SKILL_ROUTES = (REVIEW, ATS, COVER_LETTER, EMAIL)
+SKILL_ROUTES = (REVIEW, ATS, COVER_LETTER, EMAIL, RESUME)
 
 REFERENCE_QUERIES = {
     TRIVIAL: [
@@ -94,6 +96,14 @@ REFERENCE_QUERIES = {
         "write a short email applying for this role",
         "help me email the hiring manager",
         "give me subject lines and an email to apply",
+    ],
+    RESUME: [
+        "generate a tailored resume for this job",
+        "create a one-page resume for this role",
+        "build my resume for this job description",
+        "make me an ATS-friendly resume as a docx",
+        "tailor my resume to this posting and give me the file",
+        "produce a new resume aligned to this job",
     ],
 }
 

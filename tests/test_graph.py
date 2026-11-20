@@ -14,6 +14,7 @@ from graph import build_graph, latest_text, route_action
         ("review", "skill_review"),
         ("cover_letter", "skill_cover_letter"),
         ("email", "skill_email"),
+        ("resume", "resume_generation"),
         ("", "answer"),
         (None, "answer"),
         ("not-a-skill", "answer"),
@@ -164,3 +165,50 @@ def test_window_starts_on_a_human_message():
 def test_cost_plateaus_once_the_window_is_full():
     sizes = [len(trim(conversation(t), max_turns=3)) for t in range(1, 11)]
     assert sizes[-1] == sizes[-2] == 6
+
+
+def test_router_resume_route_maps_to_resume_node():
+    from graph import NODE_BY_ROUTE
+
+    assert NODE_BY_ROUTE["resume"] == "resume_generation"
+
+
+def test_resume_node_writes_docx_and_reports_path(monkeypatch, tmp_path):
+    """Run the compiled graph's resume node end to end with the generator stubbed."""
+    import os
+
+    import graph as graph_module
+
+    monkeypatch.setattr(graph_module, "generate_resume_docx", lambda p, jd, llm: b"DOCX")
+    monkeypatch.setattr(graph_module, "ProfileIndex", lambda *a, **k: type("I", (), {"chunks": []})())
+    monkeypatch.setattr(graph_module, "SemanticRouter", lambda *a, **k: None)
+    monkeypatch.setattr(graph_module, "chunk_documents", lambda *_: [])
+    monkeypatch.setattr(graph_module, "embed", lambda *_: None)
+    monkeypatch.setenv("CHECKPOINT_DB", str(tmp_path / "c.sqlite"))
+    from config import get_settings
+    get_settings.cache_clear()
+
+    class _LLM:
+        def with_structured_output(self, *_):
+            return None
+
+    monkeypatch.setattr(graph_module, "build_llm", lambda *a, **k: _LLM())
+    monkeypatch.setattr(graph_module, "build_qa_prompt", lambda: _Chain())
+    monkeypatch.setattr(graph_module, "build_skill_prompt", lambda: _Chain())
+    monkeypatch.setattr(graph_module, "build_rag_prompt", lambda: _Chain())
+    monkeypatch.setattr(graph_module, "build_trivial_prompt", lambda: _Chain())
+    g = graph_module.build_graph(api_key="k", profile_data="profile")
+    out = g.invoke(
+        {"messages": [HumanMessage(content="x")], "job_description": "jd", "action": "resume"},
+        {"configurable": {"thread_id": "t"}},
+    )
+    assert out["resume_file"].endswith(".docx")
+    with open(out["resume_file"], "rb") as f:
+        assert f.read() == b"DOCX"
+    os.remove(out["resume_file"])
+    get_settings.cache_clear()
+
+
+class _Chain:
+    def __or__(self, _other):
+        return self
